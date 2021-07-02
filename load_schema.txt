@@ -1,0 +1,73 @@
+NUMCMP, ALL
+*GET, KMax, Kp, , NUM, MAX
+
+K, KMax+1, 0, 0, -1
+K, KMax+2, 0, 10, -1
+K, KMax+3, 1, 10, -1
+K, KMax+4, 1, 0, -1
+A, KMax+1, KMax+2, KMax+3, KMax+4
+
+K, KMax+5, 9, 0, -1
+K, KMax+6, 9, 10, -1
+K, KMax+7, 10, 10, -1
+K, KMax+8, 10, 0, -1
+A, KMax+5, KMax+6, KMax+7, KMax+8
+
+K, KMax+9, 4.5, 0, 11
+K, KMax+10, 4.5, 10, 11
+K, KMax+11, 5.5, 10, 11
+K, KMax+12, 5.5, 0, 11
+A, KMax+9, KMax+10, KMax+11, KMax+12
+
+*GET, Area_max, Area, , NUM, MAX
+! Число поверхностей ВСЕГО Area_max
+
+VOFFST,Area_max-2,-1,
+VOFFST,Area_max-1,-1,
+VOFFST,Area_max,+1,
+
+VGLUE,ALL
+
+DENSITY   = 8.0e-6
+YOUNG     = 210000.0
+MP,EX,1,YOUNG
+MP,NUXY,1,0.3
+MP,DENS,1,DENSITY
+
+et,1,solid186
+
+MSHKEY,0
+MSHAPE,1,3d
+VMESH,all
+ASEL,ALL
+FINISH
+/SOL
+
+FLST, 2, 2, 5, ORDE, 2
+FITEM, 2, Area_max-2
+FITEM, 2, Area_max-1
+/ GO
+DA, P51X, ALL,
+
+FLST, 2, 1, 5, ORDE, 1
+FITEM, 2, Area_max
+/ GO
+SFA, P51X, 1, PRES, 1000
+! / STATUS, SOLU
+
+SOLVE
+
+
+/POST1
+SET,FIRST
+
+NSORT, S, EQV
+*GET, STRESS_MAX, SORT, , MAX
+*STATUS,STRESS_MAX
+
+AVPRIN,0, ,
+ETABLE,EVolume,VOLU,
+SSUM
+
+*GET,total_vol,SSUM, ,ITEM,EVOLUME
+*STATUS,total_vol

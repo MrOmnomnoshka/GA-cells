@@ -1,0 +1,27 @@
+class ConfigTableHeaders:
+    ANGLE_NUM_START = 0
+    ANGLE_NUM_END = 1
+    ANGLE_NUM_STEP = 2
+
+    ROTATE_ANGLE_START = 3
+    ROTATE_ANGLE_END = 4
+    ROTATE_ANGLE_STEP = 5
+
+    VOLUME_PART_START = 6
+    VOLUME_PART_END = 7
+    VOLUME_PART_STEP = 8
+
+    CELLS_OX_START = 9
+    CELLS_OX_END = 10
+    CELLS_OX_STEP = 11
+
+    CELLS_OY_START = 12
+    CELLS_OY_END = 13
+    CELLS_OY_STEP = 14
+
+    BODY_X0 = 15
+    BODY_X1 = 16
+    BODY_Y0 = 17
+    BODY_Y1 = 18
+    BODY_Z0 = 19
+    BODY_Z1 = 20
