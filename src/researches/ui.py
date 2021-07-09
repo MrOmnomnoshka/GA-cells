@@ -18,12 +18,14 @@ from src.researches.BodyParams import BodyParameters
 from src.researches.Calculation import CalculationContext, Calculation, CalculationParams
 from src.researches.ResultTableHeaders import ResultTableHeaders
 from src.researches.util import table_utils
+from src.researches.GA.Chromosome import Chromosome
 
-DEBUG = True
+DEBUG = False
+POP_SIZE = 8
+
 
 # noinspection PyAttributeOutsideInit
 class Ui_Dialog(object):
-
     __schema_load_file_name: Tuple[str, str]
 
     def __init__(self):
@@ -160,6 +162,12 @@ class Ui_Dialog(object):
         self.import_researches_btn.setGeometry(QtCore.QRect(600, 200, 200, 30))
         self.import_researches_btn.setObjectName("import_researches_btn")
         self.import_researches_btn.clicked.connect(self.load_csv)
+        self.max_stress = QtWidgets.QLabel(Dialog)
+        self.max_stress.setGeometry(QtCore.QRect(600, 225, 225, 30))
+        self.max_stress.setObjectName("max_stress")
+        self.current_stress = QtWidgets.QLabel(Dialog)
+        self.current_stress.setGeometry(QtCore.QRect(600, 250, 250, 30))
+        self.current_stress.setObjectName("current_stress")
 
         # Research form
         self.button_research = QtWidgets.QPushButton(Dialog)
@@ -177,8 +185,8 @@ class Ui_Dialog(object):
         self.result_table.setColumnWidth(ResultTableHeaders.VOLUME_PART, 70)
         self.result_table.setColumnWidth(ResultTableHeaders.CELLS_OX, 70)
         self.result_table.setColumnWidth(ResultTableHeaders.CELLS_OY, 70)
-        self.result_table.setColumnWidth(ResultTableHeaders.STATUS, 70)
-        self.result_table.setColumnWidth(ResultTableHeaders.MAX_PRESS, 70)
+        self.result_table.setColumnWidth(ResultTableHeaders.STATUS, 90)
+        self.result_table.setColumnWidth(ResultTableHeaders.MAX_PRESS, 90)
         self.result_table.setGeometry(QtCore.QRect(10, 315, 525, 200))
         self.result_table.setEditTriggers(QtWidgets.QTableWidget.NoEditTriggers)
         self.button_result = QtWidgets.QPushButton(Dialog)
@@ -191,11 +199,9 @@ class Ui_Dialog(object):
         self.button_stress.clicked.connect(self.show_stress_chart)
         self.button_export = QtWidgets.QPushButton(Dialog)
         self.button_export.setGeometry(QtCore.QRect(600, 435, 200, 30))
-        self.button_export.setText("Экспорт")
         self.button_export.clicked.connect(self.save_csv)
         self.button_clusterization = QtWidgets.QPushButton(Dialog)
         self.button_clusterization.setGeometry(QtCore.QRect(600, 475, 200, 30))
-        self.button_clusterization.setText("Анализ экспериментов")
         self.button_clusterization.clicked.connect(self.analyze_researches)
 
         # Input files form
@@ -206,6 +212,7 @@ class Ui_Dialog(object):
         self.input_detail_file = QtWidgets.QLineEdit(Dialog)
         self.input_detail_file.setGeometry(QtCore.QRect(220, 240, 315, 25))
         self.input_detail_file.setObjectName("input_detail_file")
+        self.__detail_file_name = ['D:/DIPLOMA/app/researcher/model_250x250x250mm.igs']
         self.input_detail_file.setEnabled(False)
 
         self.button_load_schema_file = QtWidgets.QPushButton(Dialog)
@@ -215,6 +222,7 @@ class Ui_Dialog(object):
         self.input_load_schema_file = QtWidgets.QLineEdit(Dialog)
         self.input_load_schema_file.setGeometry(QtCore.QRect(220, 270, 315, 25))
         self.input_load_schema_file.setObjectName("input_load_schema_file")
+        self.__schema_load_file_name = [r'D:\DIPLOMA\app\researcher\load_schema2.txt']
         self.input_load_schema_file.setEnabled(False)
 
         self.retranslateUi(Dialog)
@@ -272,6 +280,15 @@ class Ui_Dialog(object):
             float(self.input_body_z0.text()),
             float(self.input_body_z1.text()))
 
+    def __get_body_params_ga(self, agent) -> BodyParameters:
+        return BodyParameters(
+            float(min(agent.working_zone[0][0], agent.working_zone[0][1])),
+            float(max(agent.working_zone[0][0], agent.working_zone[0][1])),
+            float(min(agent.working_zone[1][0], agent.working_zone[1][1])),
+            float(max(agent.working_zone[1][0], agent.working_zone[1][1])),
+            float(0),
+            float(250))
+
     def __get_calculation_context(self) -> CalculationContext:
         return CalculationContext(
             int(self.input_rotate_angle_start.text()),
@@ -292,7 +309,7 @@ class Ui_Dialog(object):
 
     def pick_model_file(self):
         if DEBUG:
-            self.__detail_file_name = ['D:/DIPLOMA/app/researcher/model_250x250x250mm.igs', ]
+            self.__detail_file_name = ['D:/DIPLOMA/app/researcher/model_250x250x250mm.igs']
         else:
             # открыть диалог выбора файла в текущей папке
             self.__detail_file_name = QtWidgets.QFileDialog.getOpenFileName(self.__dialog, 'Open file', '..\\..',
@@ -303,22 +320,34 @@ class Ui_Dialog(object):
 
     def pick_schema_load_file(self):
         if DEBUG:
-            self.__schema_load_file_name = [r'D:\DIPLOMA\app\researcher\load_schema2.txt', ]
+            self.__schema_load_file_name = [r'D:\DIPLOMA\app\researcher\load_schema2.txt']
         else:
             self.__schema_load_file_name = QtWidgets.QFileDialog.getOpenFileName(self.__dialog, 'Open file', '..\\..',
-                                                                                 '(*.*)')
+                                                                                 '(*.txt)')
         if self.__schema_load_file_name:  # не продолжать выполнение, если пользователь не выбрал файл
             self.input_load_schema_file.setText(self.__schema_load_file_name[0])
 
     def research(self):
         self.calculation = Calculation()
 
-        # TODO: the line below is for profiler ONLY
-        # self.calculation.calculate(self.__detail_file_name[0], self.__schema_load_file_name[0], self.result_table)
-        #
+        self.calculation.import_detail_and_load_schema_files(self.__detail_file_name[0],
+                                                             self.__schema_load_file_name[0])
 
-        thread.start_new_thread(self.calculation.calculate,
-                                (self.__detail_file_name[0], self.__schema_load_file_name[0], self.result_table))
+        root_folder = self.calculation.create_root_folder_and_move_to_it()
+
+        ansys_manager = self.calculation.init_ansys(root_folder)
+
+        # Count zero_stress
+        # TODO: lock\unlock (1 step: count zero     2 step: count all others)
+        # thread.start_new_thread(self.calculation.calculate_zero_stress, (self.max_stress, ansys_manager))
+
+        self.calculation.calculate_zero_stress(self.max_stress, ansys_manager)
+
+        # Start research
+        # TODO: the line below is for profiler ONLY
+        # self.calculation.calculate(self.result_table, ansys_manager)
+
+        thread.start_new_thread(self.calculation.calculate, (self.result_table, ansys_manager))
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
@@ -368,20 +397,52 @@ class Ui_Dialog(object):
         self.button_detail_file.setText(_translate("Dialog", "Файл детали"))
         self.button_load_schema_file.setText(_translate("Dialog", "Файл схемы нагрузки"))
 
+        self.max_stress.setText("Нагрузка 0:")
+        self.current_stress.setText("Нагрузка i:")
+        self.button_export.setText("Экспорт")
+        self.button_clusterization.setText("Анализ экспериментов")
+        self.input_detail_file.setText(r'D:\DIPLOMA\app\researcher\model_250x250x250mm.igs')
+        self.input_load_schema_file.setText(r'D:\DIPLOMA\app\researcher\load_schema2.txt')
+
     def fill_researches_list(self):
-        # Clear the old table if exists
-        self.result_table.setRowCount(0)
+        # # ===================== OLD =========================
+        # # Clear the old table if exists
+        # self.result_table.setRowCount(0)
+        #     
+        # context = self.__get_calculation_context()
+        # body_params = self.__get_body_params()
+        # calculation_params: List = self.__calc_params(context)
+        # 
+        # index = self.result_table.rowCount()
+        # 
+        # for calculation_param in calculation_params:
+        #     self.result_table.setRowCount(index + 1)
+        #     self.__add_calc_param_and_body_param_in_result_table(calculation_param, body_params, index)
+        #     index += 1
+        # # ===================== OLD =========================
 
-        context = self.__get_calculation_context()
-        body_params = self.__get_body_params()
-        calculation_params: List = self.__calc_params(context)
-
-        index = self.result_table.rowCount()
-
-        for calculation_param in calculation_params:
-            self.result_table.setRowCount(index + 1)
-            self.__add_calc_param_and_body_param_in_result_table(calculation_param, body_params, index)
-            index += 1
+        for i in range(POP_SIZE):
+            agent = Chromosome()
+            agent.generate_all_params()
+            body_params = self.__get_body_params_ga(agent)
+            
+            self.result_table.setRowCount(i + 1)
+            self.__add_ga_param_in_result_table(agent, body_params, i)
+            del agent
+            
+    def __add_ga_param_in_result_table(self, agent, bp, index):
+        self.result_table.setItem(index, ResultTableHeaders.ANGLE_NUM, QTableWidgetItem(str(agent.angles)))
+        self.result_table.setItem(index, ResultTableHeaders.ROTATE_ANGLE, QTableWidgetItem(str(agent.rotation)))
+        self.result_table.setItem(index, ResultTableHeaders.VOLUME_PART, QTableWidgetItem(str(agent.size)))
+        self.result_table.setItem(index, ResultTableHeaders.CELLS_OX, QTableWidgetItem(str(agent.x_amount)))
+        self.result_table.setItem(index, ResultTableHeaders.CELLS_OY, QTableWidgetItem(str(agent.y_amount)))
+        
+        self.result_table.setItem(index, ResultTableHeaders.DETAIL_X0, QTableWidgetItem(str(bp.get_x0_body())))
+        self.result_table.setItem(index, ResultTableHeaders.DETAIL_X1, QTableWidgetItem(str(bp.get_xend_body())))
+        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Y0, QTableWidgetItem(str(bp.get_y0_body())))
+        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Y1, QTableWidgetItem(str(bp.get_yend_body())))
+        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Z0, QTableWidgetItem(str(bp.get_z0_body())))
+        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Z1, QTableWidgetItem(str(bp.get_zend_body())))
 
     def __add_calc_param_and_body_param_in_result_table(self, calculation_param: CalculationParams,
                                                         body_param: BodyParameters, index: int):
@@ -424,12 +485,12 @@ class Ui_Dialog(object):
 
     def show_result(self):
         # if row is picked
-        if (self.result_table.currentRow() != -1):
+        if self.result_table.currentRow() != -1:
             self.calculation.show_result(self.result_table.currentRow())
             pass
 
     def show_stress_chart(self):
-        if (self.result_table.currentRow() != -1):
+        if self.result_table.currentRow() != -1:
             self.calculation.show_stress_chart(self.result_table.currentRow())
 
 
@@ -439,12 +500,14 @@ class MyDialog(QtWidgets.QDialog):
         super().__init__(parent)
 
     def closeEvent(self, event: QtGui.QCloseEvent):
+        # print(super(MyDialog, self).ansys_manager)  # Not working
         print("Event: " + str(event))
         super(MyDialog, self).closeEvent(event)
 
 
 if __name__ == "__main__":
     import sys
+
     os.environ["PARSER_JAR"] = r"..\..\nodes_parser.jar"
     app = QtWidgets.QApplication(sys.argv)
     Dialog = MyDialog()

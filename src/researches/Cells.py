@@ -85,6 +85,8 @@ class RectangleCells(AbstractAngle):
         self.cell_length = self.body.length * sqrt(coef)
         self.cell_width = self.body.width * sqrt(coef)
 
+        # TODO: add size of angle
+
     def try_size_condition(self):
         return True
 

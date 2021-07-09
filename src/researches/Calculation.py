@@ -61,17 +61,17 @@ class Calculation:
     def __init__(self):
         self.results = {}
 
-    def calculate(self, detail_fn: str, load_schema_fn: str, result_table: QtWidgets.QTableWidget):
-        self.detail_fn = detail_fn
-        self.load_schema_fn = load_schema_fn
+    def calculate_zero_stress(self, max_stress_label, ansys_manager):
+        try:
+            max_stress = self.research_zero_stress(ansys_manager)
+            if max_stress:
+                max_stress_label.setText("Нагрузка 0: " + str(max_stress))
 
-        self.root_folder = self.__build_root_folder()
+        except Exception as e:
+            print(e)
+            return False
 
-        count = 0
-        path = pathlib.Path(self.root_folder)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        os.mkdir(self.root_folder)
-
+    def calculate(self, result_table, ansys_manager):
         file_path = self.root_folder + os.sep + "researches.csv"
         with open(file_path, mode="w", newline="") as researches_csv:
             writer = csv.writer(researches_csv)
@@ -79,6 +79,9 @@ class Calculation:
                                     "research_Status"]
             writer.writerow(research_result_data)
 
+        # research_folder = self.root_folder + os.sep + "experiments"
+        # ansys = self.init_ansys(self.root_folder)
+        count = 0
         for row_index in range(result_table.rowCount()):
             param = self.__build_calculate_params(result_table, row_index)
             body_params = self.__build_body_params(result_table, row_index)
@@ -87,17 +90,39 @@ class Calculation:
             result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('In progress'))
 
             try:
-                self.researchFromDetailModel(body_params, param, cells, self.root_folder + os.sep + str(count),
-                                             result_table, count)
+                self.researchFromDetailModel(body_params, param, cells, self.root_folder,
+                                             result_table, count, ansys_manager)
             except Exception as e:
                 result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Bad cell size'))
+                print(e)
 
             self.__write_row_in_csv_results(count, param)
-
             count += 1
 
+        # Create new generation
+        finished = []
+        for i in range(0, result_table.rowCount()):
+            if result_table.item(i, ResultTableHeaders.STATUS).text() == "Finished":
+                stress = str(result_table.item(i, ResultTableHeaders.MAX_PRESS).text())
+                finished.append((i, stress))
+                # new_generation
+        print(finished)
+
+    def import_detail_and_load_schema_files(self, detail_fn, load_schema_fn):
+        self.detail_fn = detail_fn
+        self.load_schema_fn = load_schema_fn
+
+    def create_root_folder_and_move_to_it(self):
+        self.root_folder = self.__build_root_folder()
+        path = pathlib.Path(self.root_folder)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not os.path.isdir(self.root_folder):  # Create root_folder if not exist
+            os.mkdir(self.root_folder)
+        return self.root_folder
+
     def __build_root_folder(self):
-        return str(os.getcwd() + os.sep + 'researches' + os.sep + datetime.now().strftime('%Y-%m-%d %H-%M-%S'))
+        # return str(os.getcwd() + os.sep + 'researches' + os.sep + datetime.now().strftime('%Y-%m-%d %H-%M-%S'))
+        return str(os.getcwd() + os.sep + 'researches' + os.sep + 'temp_files')
 
     def __calculate_cells(self, body_params: BodyParameters, param: CalculationParams):
         if param.angle_num < 3:
@@ -145,6 +170,10 @@ class Calculation:
             float(result_table.item(row_index, ResultTableHeaders.DETAIL_Z0).text()),
             float(result_table.item(row_index, ResultTableHeaders.DETAIL_Z1).text()))
 
+    def __build_body_params_ga(self):
+        # TODO: calc body dynamically for different models
+        return BodyParameters(float(0), float(250), float(0), float(250), float(0), float(250))
+
     def __calc_params(self, context) -> List[CalculationParams]:
         list = []
 
@@ -159,16 +188,20 @@ class Calculation:
 
         return list
 
-    def researchFromDetailModel(self, body_params, calc_param, cells, research_folder, result_table, count):
+    def researchFromDetailModel(self, body_params, calc_param, cells, research_folder, result_table, count, ansys):
         try:
             self.results[count] = [body_params, calc_param, cells, research_folder, 'IN_PROGRESS']
-            ansys = self.init_ansys(research_folder)
             cells_coordinates = self.__execute_ansys_commands(ansys, cells, body_params, calc_param)
 
+            # TODO: if you don't need max_stress comment the line below
+            # max_press = 0
             max_press = self.get_max_press(ansys)
+            # TODO: add all 'file.db' aka model in folder like: (1,2,3...8)
+            # TODO: and read data from then by clicking 'result'
+
             try:
                 # TODO: See 'TODO' in inner function
-                self.write_all_nodes_coordinates(ansys, research_folder)
+                # self.write_all_nodes_coordinates(ansys, research_folder)
                 pass
             except Exception as e:
                 print(e)
@@ -177,38 +210,45 @@ class Calculation:
             if result_table:
                 result_table.setItem(count, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str(max_press)))
                 result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Finished'))
-                result_table.update()  # TODO: IS this line works???    (NO, It's not)
+                # result_table.update()  # TODO: IS this line works???    (NO, It's not)
 
-            ansys.exit()
+            # ansys.exit()
+            ansys.run("/CLEAR")
+            ansys.run("/INPUT FILE+ D:\\Programs\\ANSYS Inc\\v192\\ANSYS\\apdl\\start.ans")
 
             self.results[count] = [body_params, calc_param, cells, research_folder, 'FINISHED']
             return True
+
         except Exception as e:
             print(traceback.format_exc())
             if result_table:
                 result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Failed'))
             self.results[count] = [body_params, calc_param, cells, research_folder, 'FAILED']
+
+            ansys.run("/CLEAR")
+            ansys.run("/INPUT FILE+ D:\\Programs\\ANSYS Inc\\v192\\ANSYS\\apdl\\start.ans")
+            return False
+
+    def research_zero_stress(self, ansys):
+        try:
+            self.__execute_ansys_start_commands(ansys)
+            self.__run_load_schema(ansys)
+            max_press = self.get_max_press(ansys)
+
+            # ansys.exit()
+            ansys.run("/CLEAR")
+            ansys.run("/INPUT FILE+ D:\\Programs\\ANSYS Inc\\v192\\ANSYS\\apdl\\start.ans")
+
+            return max_press
+
+        except Exception as e:
+            print(traceback.format_exc())
             return False
 
     def __execute_ansys_commands(self, ansys, cells, body_params, calc_param):
-        drawer = self.create_drawer(ansys, cells, body_params, calc_param)
-        ansys.run("/ BATCH")
-        ansys.run("WPSTYLE,, , , , , , , 0")
-        ansys.run("/ AUX15")
-        ansys.run("IOPTN, IGES, SMOOTH")
-        ansys.run("IOPTN, MERGE, YES")
-        ansys.run("IOPTN, SOLID, YES")
-        ansys.run("IOPTN, SMALL, YES")
-        ansys.run("IOPTN, GTOLER, DEFA")
-        ansys.run("IGESIN, '%s','IGS','%s' ! import" % \
-                  (str(pathlib.Path(self.detail_fn).stem), str(pathlib.Path(self.detail_fn).parent.absolute())))
-        ansys.run("! VPLOT")
-        ansys.run("FINISH")
-        ansys.prep7()
-        ansys.run("NUMCMP, ALL")
-        ansys.run("/units, mpa")
-        ansys.k()
+        self.__execute_ansys_start_commands(ansys)
 
+        drawer = self.create_drawer(ansys, cells, body_params, calc_param)
         res = ansys.run("*GET, KMax, VOLU,, NUM, MAX")
         start = res.index("VALUE= ") + 7
         volume_id = res[start:]
@@ -225,6 +265,30 @@ class Calculation:
 
         return cells_coordinates
 
+    def __execute_ansys_start_commands(self, ansys):
+        ansys.run("/ BATCH")
+        ansys.run("WPSTYLE,, , , , , , , 0")
+        ansys.run("/ AUX15")
+        ansys.run("IOPTN, IGES, SMOOTH")
+        ansys.run("IOPTN, MERGE, YES")
+        ansys.run("IOPTN, SOLID, YES")
+        ansys.run("IOPTN, SMALL, YES")
+        ansys.run("IOPTN, GTOLER, DEFA")
+        ansys.run("IGESIN, '%s','IGS','%s' ! import" %
+                  (str(pathlib.Path(self.detail_fn).stem), str(pathlib.Path(self.detail_fn).parent.absolute())))
+        ansys.run("! VPLOT")
+        ansys.run("FINISH")
+        ansys.prep7()
+        ansys.run("NUMCMP, ALL")
+        ansys.run("/units, mpa")
+        ansys.k()
+
+    def __run_load_schema(self, ansys):
+        with open(file=self.load_schema_fn, mode="r", encoding="utf-8") as load_schema_commands:
+            for command in load_schema_commands:
+                if not command.isspace() and command[0] != '!':
+                    ansys.run(command)
+
     def __write_cells_in_json(self, cells_coordinates, research_folder: str):
         json_cells_coordinates = json.dumps(cells_coordinates)
         with open(research_folder + os.sep + "cells.json", "a") as json_cells_file:
@@ -236,11 +300,13 @@ class Calculation:
     def write_all_nodes_coordinates(self, ansys, research_folder: str, file: str = "nodes.csv"):
         nodes_data_frame = pd.DataFrame(columns=["node_id", "x", "y", "z"])
         start_node = 1
-        page_size = 2000  # TODO: it was '10000'
+        page_size = 5000  # TODO: it was '10000'
         end_node = start_node + page_size
         nodes_count = self.get_count_of_nodes(ansys)
+        # ####
         # is_java_installed = self.__is_java_installed()
         is_java_installed = False  # TODO: update java version //or// boost python
+        # ####
         temp_file = research_folder + os.sep + "temp_nodes.txt"
 
         while start_node < nodes_count:
@@ -289,14 +355,17 @@ class Calculation:
         ansys.run("*GET, STRESS_MAX, SORT,, MAX")
         status = ansys.run("*STATUS, STRESS_MAX")
         start = status.index("\n STRESS_MAX")
+        # TODO: Да там и до этого 3 командами выше можно вытянуть макс стресс
         max_stress = re.findall('\d+\\.\d+', status[start:])[0]
 
         return float(max_stress)
 
     def init_ansys(self, root_folder):
-        path = pathlib.Path(root_folder)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        os.mkdir(root_folder)
+        if not os.path.isdir(root_folder):  # Create root_folder if not exist
+            path = pathlib.Path(root_folder)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            os.mkdir(root_folder)
+
         return launch_mapdl(
             append=True,
             run_location=root_folder,
@@ -309,9 +378,9 @@ class Calculation:
             exec_file=r"D:\Programs\ANSYS Inc\v192\ansys\bin\winx64\ANSYS192.exe")
 
     def create_drawer(self, ansys, cells, body_params, calc_params):
-        if (issubclass(cells.__class__, NAngleCells)):
+        if issubclass(cells.__class__, NAngleCells):
             return NAngleCellsDrawer(body_params, calc_params.angle_num, ansys)
-        elif (issubclass(cells.__class__, RectangleCells)):
+        elif issubclass(cells.__class__, RectangleCells):
             return RectangleCellsDrawer(body_params, cells.rows, ansys)
         # elif (issubclass(cells.__class__, CircleCells)):
         #     return Cir
