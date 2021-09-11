@@ -1,239 +1,118 @@
-# -*- coding: utf-8 -*-
-
-# Form implementation generated from reading ui file '../untitled.ui'
-#
-# Created by: PyQt5 UI code generator 5.13.0
-#
-# WARNING! All changes made in this file will be lost!
-
 import _thread as thread
-import os
-from typing import List, Tuple
+import sys
+import random
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore import QMutex
+
+from PyQt5.QtCore import QMutex, QObject, QThread, pyqtSignal
+
 from PyQt5.QtWidgets import QTableWidgetItem, QMessageBox
+import pyqtgraph as pg
 
 from src.researches.BodyParams import BodyParameters
-from src.researches.Calculation import CalculationContext, Calculation, CalculationParams
+from src.researches.Calculation import *
 from src.researches.ResultTableHeaders import ResultTableHeaders
 from src.researches.util import table_utils
 from src.researches.GA.Chromosome import Chromosome
+from forms import design  # Это наш конвертированный файл дизайна
 
-DEBUG = False
-POP_SIZE = 8
+POP_SIZE = 40
 
 
 # noinspection PyAttributeOutsideInit
-class Ui_Dialog(object):
-    __schema_load_file_name: Tuple[str, str]
+class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
 
     def __init__(self):
-        self.__mutex = QMutex()
+        # Это здесь нужно для доступа к переменным, методам и т.д. в файле design.py
         super().__init__()
+        self.setupUi(self)  # Это нужно для инициализации нашего дизайна
 
-    def setupUi(self, Dialog):
-        self.__dialog = Dialog
-        Dialog.setObjectName("Dialog")
-        Dialog.resize(810, 540)
-        Dialog.setModal(False)
+        self.mutex = QMutex()  # lock class that allows to manage mutual exclusion
+        self.balance = 100
+        self.threads = []
+        self.calculation = Calculation()
+        self.ansys_manager = None
+        self.is_running = False
 
-        # Cells configuration form
-        self.label_angle_number = QtWidgets.QLabel(Dialog)
-        self.label_angle_number.setGeometry(QtCore.QRect(10, 40, 91, 16))
-        self.label_angle_number.setObjectName("label_angle_number")
-        self.label_rotate_angle = QtWidgets.QLabel(Dialog)
-        self.label_rotate_angle.setGeometry(QtCore.QRect(10, 80, 81, 20))
-        self.label_rotate_angle.setObjectName("label_rotate_angle")
-        self.label_volume_part = QtWidgets.QLabel(Dialog)
-        self.label_volume_part.setGeometry(QtCore.QRect(10, 120, 111, 20))
-        self.label_volume_part.setObjectName("label_volume_part")
-        self.label_start = QtWidgets.QLabel(Dialog)
-        self.label_start.setGeometry(QtCore.QRect(120, 20, 47, 13))
-        self.label_start.setObjectName("label_start")
-        self.label_end = QtWidgets.QLabel(Dialog)
-        self.label_end.setGeometry(QtCore.QRect(270, 20, 47, 13))
-        self.label_end.setObjectName("label_end")
-        self.label_step = QtWidgets.QLabel(Dialog)
-        self.label_step.setGeometry(QtCore.QRect(420, 20, 47, 13))
-        self.label_step.setObjectName("label_step")
-        self.label_cells_ox = QtWidgets.QLabel(Dialog)
-        self.label_cells_ox.setGeometry(QtCore.QRect(10, 160, 111, 20))
-        self.label_cells_ox.setObjectName("label_cells_ox_start")
-        self.label_cells_oy = QtWidgets.QLabel(Dialog)
-        self.label_cells_oy.setGeometry(QtCore.QRect(10, 200, 111, 20))
-        self.label_cells_oy.setObjectName("label_cells_oy")
+        self.connect_all_buttons()
 
-        self.input_angle_num_start = QtWidgets.QLineEdit(Dialog)
-        self.input_angle_num_start.setGeometry(QtCore.QRect(120, 40, 113, 20))
-        self.input_angle_num_start.setObjectName("input_angle_num_start")
-        self.input_angle_num_end = QtWidgets.QLineEdit(Dialog)
-        self.input_angle_num_end.setGeometry(QtCore.QRect(270, 40, 113, 20))
-        self.input_angle_num_end.setObjectName("input_angle_num_end")
-        self.input_angle_num_step = QtWidgets.QLineEdit(Dialog)
-        self.input_angle_num_step.setGeometry(QtCore.QRect(420, 40, 113, 20))
-        self.input_angle_num_step.setObjectName("input_angle_num_step")
-
-        self.input_rotate_angle_start = QtWidgets.QLineEdit(Dialog)
-        self.input_rotate_angle_start.setGeometry(QtCore.QRect(120, 80, 113, 20))
-        self.input_rotate_angle_start.setObjectName("input_rotate_angle_start")
-        self.input_rotate_angle_end = QtWidgets.QLineEdit(Dialog)
-        self.input_rotate_angle_end.setGeometry(QtCore.QRect(270, 80, 113, 20))
-        self.input_rotate_angle_end.setObjectName("input_rotate_angle_end")
-        self.input_rotate_angle_step = QtWidgets.QLineEdit(Dialog)
-        self.input_rotate_angle_step.setGeometry(QtCore.QRect(420, 80, 113, 20))
-        self.input_rotate_angle_step.setObjectName("input_rotate_angle_step")
-
-        self.input_volume_part_start = QtWidgets.QLineEdit(Dialog)
-        self.input_volume_part_start.setGeometry(QtCore.QRect(120, 120, 113, 20))
-        self.input_volume_part_start.setObjectName("input_volume_part_start")
-        self.input_volume_part_end = QtWidgets.QLineEdit(Dialog)
-        self.input_volume_part_end.setGeometry(QtCore.QRect(270, 120, 113, 20))
-        self.input_volume_part_end.setObjectName("input_volume_part_end")
-        self.input_volume_part_step = QtWidgets.QLineEdit(Dialog)
-        self.input_volume_part_step.setGeometry(QtCore.QRect(420, 120, 113, 20))
-        self.input_volume_part_step.setObjectName("input_volume_part_step")
-
-        self.input_cells_ox_start = QtWidgets.QLineEdit(Dialog)
-        self.input_cells_ox_start.setGeometry(QtCore.QRect(120, 160, 113, 20))
-        self.input_cells_ox_start.setObjectName("input_cells_ox_start")
-        self.input_cells_ox_end = QtWidgets.QLineEdit(Dialog)
-        self.input_cells_ox_end.setGeometry(QtCore.QRect(270, 160, 113, 20))
-        self.input_cells_ox_end.setObjectName("input_cells_ox_end")
-        self.input_cells_ox_step = QtWidgets.QLineEdit(Dialog)
-        self.input_cells_ox_step.setGeometry(QtCore.QRect(420, 160, 113, 20))
-        self.input_cells_ox_step.setObjectName("input_cells_ox_step")
-
-        self.input_cells_oy_start = QtWidgets.QLineEdit(Dialog)
-        self.input_cells_oy_start.setGeometry(QtCore.QRect(120, 200, 113, 20))
-        self.input_cells_oy_start.setObjectName("input_cells_oy_start")
-        self.input_cells_oy_end = QtWidgets.QLineEdit(Dialog)
-        self.input_cells_oy_end.setGeometry(QtCore.QRect(270, 200, 113, 20))
-        self.input_cells_oy_end.setObjectName("input_cells_oy_end")
-        self.input_cells_oy_step = QtWidgets.QLineEdit(Dialog)
-        self.input_cells_oy_step.setGeometry(QtCore.QRect(420, 200, 113, 20))
-        self.input_cells_oy_step.setObjectName("input_cells_oy_step")
-
-        # Area for cells configuration
-        self.label_body_z0 = QtWidgets.QLabel(Dialog)
-        self.label_body_z0.setGeometry(QtCore.QRect(620, 40, 15, 20))
-        self.label_body_z0.setObjectName("label_body_z0")
-        self.input_body_z0 = QtWidgets.QLineEdit(Dialog)
-        self.input_body_z0.setGeometry(QtCore.QRect(640, 40, 50, 20))
-        self.input_body_z0.setObjectName("input_body_z0")
-        self.label_body_z1 = QtWidgets.QLabel(Dialog)
-        self.label_body_z1.setGeometry(QtCore.QRect(710, 40, 15, 20))
-        self.label_body_z1.setObjectName("label_body_z1")
-        self.input_body_z1 = QtWidgets.QLineEdit(Dialog)
-        self.input_body_z1.setGeometry(QtCore.QRect(730, 40, 50, 20))
-        self.input_body_z1.setObjectName("input_body_z1")
-
-        self.label_body_y0 = QtWidgets.QLabel(Dialog)
-        self.label_body_y0.setGeometry(QtCore.QRect(620, 80, 15, 20))
-        self.label_body_y0.setObjectName("label_body_y0")
-        self.input_body_y0 = QtWidgets.QLineEdit(Dialog)
-        self.input_body_y0.setGeometry(QtCore.QRect(640, 80, 50, 20))
-        self.input_body_y0.setObjectName("input_body_y0")
-        self.label_body_y1 = QtWidgets.QLabel(Dialog)
-        self.label_body_y1.setGeometry(QtCore.QRect(710, 80, 15, 20))
-        self.label_body_y1.setObjectName("label_body_y1")
-        self.input_body_y1 = QtWidgets.QLineEdit(Dialog)
-        self.input_body_y1.setGeometry(QtCore.QRect(730, 80, 50, 20))
-        self.input_body_y1.setObjectName("input_body_y1")
-
-        self.label_body_x0 = QtWidgets.QLabel(Dialog)
-        self.label_body_x0.setGeometry(QtCore.QRect(620, 120, 15, 16))
-        self.label_body_x0.setObjectName("label_body_x0")
-        self.input_body_x0 = QtWidgets.QLineEdit(Dialog)
-        self.input_body_x0.setGeometry(QtCore.QRect(640, 120, 50, 20))
-        self.input_body_x0.setObjectName("input_body_x0")
-        self.label_body_x1 = QtWidgets.QLabel(Dialog)
-        self.label_body_x1.setGeometry(QtCore.QRect(710, 120, 15, 16))
-        self.label_body_x1.setObjectName("label_body_x1")
-        self.input_body_x1 = QtWidgets.QLineEdit(Dialog)
-        self.input_body_x1.setGeometry(QtCore.QRect(730, 120, 50, 20))
-        self.input_body_x1.setObjectName("input_body_x1")
-
-        self.create_researches_btn = QtWidgets.QPushButton(Dialog)
-        self.create_researches_btn.setGeometry(QtCore.QRect(600, 160, 200, 30))
-        self.create_researches_btn.setObjectName("create_researches_btn")
-        self.create_researches_btn.clicked.connect(self.fill_researches_list)
-        self.import_researches_btn = QtWidgets.QPushButton(Dialog)
-        self.import_researches_btn.setGeometry(QtCore.QRect(600, 200, 200, 30))
-        self.import_researches_btn.setObjectName("import_researches_btn")
-        self.import_researches_btn.clicked.connect(self.load_csv)
-        self.max_stress = QtWidgets.QLabel(Dialog)
-        self.max_stress.setGeometry(QtCore.QRect(600, 225, 225, 30))
-        self.max_stress.setObjectName("max_stress")
-        self.current_stress = QtWidgets.QLabel(Dialog)
-        self.current_stress.setGeometry(QtCore.QRect(600, 250, 250, 30))
-        self.current_stress.setObjectName("current_stress")
-
-        # Research form
-        self.button_research = QtWidgets.QPushButton(Dialog)
-        self.button_research.setGeometry(QtCore.QRect(600, 315, 200, 30))
-        self.button_research.setObjectName("button_research")
-        self.button_research.clicked.connect(self.research)
-        self.result_table = QtWidgets.QTableWidget(Dialog)
-        self.result_table.setColumnCount(13)
-        self.result_table.horizontalHeader().setDefaultAlignment(QtCore.Qt.AlignLeft)
-        self.result_table.setHorizontalHeaderLabels(
-            ["Angle #", "Rotate Angle", "Volume part, %", "Cells Ox", "Cells Oy", "X start", "X end", "Y start",
-             "Y end", "Z start", "Z end", "Status", "Max pressure"])
-        self.result_table.setColumnWidth(ResultTableHeaders.ANGLE_NUM, 70)
-        self.result_table.setColumnWidth(ResultTableHeaders.ROTATE_ANGLE, 70)
-        self.result_table.setColumnWidth(ResultTableHeaders.VOLUME_PART, 70)
-        self.result_table.setColumnWidth(ResultTableHeaders.CELLS_OX, 70)
-        self.result_table.setColumnWidth(ResultTableHeaders.CELLS_OY, 70)
-        self.result_table.setColumnWidth(ResultTableHeaders.STATUS, 90)
-        self.result_table.setColumnWidth(ResultTableHeaders.MAX_PRESS, 90)
-        self.result_table.setGeometry(QtCore.QRect(10, 315, 525, 200))
-        self.result_table.setEditTriggers(QtWidgets.QTableWidget.NoEditTriggers)
-        self.button_result = QtWidgets.QPushButton(Dialog)
-        self.button_result.setGeometry(QtCore.QRect(600, 355, 200, 30))
-        self.button_result.setObjectName("button_retry")
-        self.button_result.clicked.connect(self.show_result)
-        self.button_stress = QtWidgets.QPushButton(Dialog)
-        self.button_stress.setGeometry(QtCore.QRect(600, 395, 200, 30))
-        self.button_stress.setObjectName("button_stress")
-        self.button_stress.clicked.connect(self.show_stress_chart)
-        self.button_export = QtWidgets.QPushButton(Dialog)
-        self.button_export.setGeometry(QtCore.QRect(600, 435, 200, 30))
-        self.button_export.clicked.connect(self.save_csv)
-        self.button_clusterization = QtWidgets.QPushButton(Dialog)
-        self.button_clusterization.setGeometry(QtCore.QRect(600, 475, 200, 30))
-        self.button_clusterization.clicked.connect(self.analyze_researches)
-
-        # Input files form
-        self.button_detail_file = QtWidgets.QPushButton(Dialog)
-        self.button_detail_file.setGeometry(QtCore.QRect(10, 240, 200, 25))
-        self.button_detail_file.setObjectName("detail_file")
+    def connect_all_buttons(self):
         self.button_detail_file.clicked.connect(self.pick_model_file)
-        self.input_detail_file = QtWidgets.QLineEdit(Dialog)
-        self.input_detail_file.setGeometry(QtCore.QRect(220, 240, 315, 25))
-        self.input_detail_file.setObjectName("input_detail_file")
-        self.__detail_file_name = ['D:/DIPLOMA/app/researcher/model_250x250x250mm.igs']
-        self.input_detail_file.setEnabled(False)
-
-        self.button_load_schema_file = QtWidgets.QPushButton(Dialog)
-        self.button_load_schema_file.setGeometry(QtCore.QRect(10, 270, 200, 25))
-        self.button_load_schema_file.setObjectName("detail_file")
         self.button_load_schema_file.clicked.connect(self.pick_schema_load_file)
-        self.input_load_schema_file = QtWidgets.QLineEdit(Dialog)
-        self.input_load_schema_file.setGeometry(QtCore.QRect(220, 270, 315, 25))
-        self.input_load_schema_file.setObjectName("input_load_schema_file")
-        self.__schema_load_file_name = [r'D:\DIPLOMA\app\researcher\load_schema2.txt']
-        self.input_load_schema_file.setEnabled(False)
+        self.button_create_researches.clicked.connect(self.fill_researches_list)
 
-        self.retranslateUi(Dialog)
-        QtCore.QMetaObject.connectSlotsByName(Dialog)
+        # self.button_play_pause.clicked.connect(self.research)
+
+
+        self.button_play_pause.clicked.connect(self.startThreads)
+
+
+
+        self.button_next.clicked.connect(self.next_generation_research)
+        # self.button_stop.clicked.connect()
+        self.button_result.clicked.connect(self.show_result)
+        self.button_stress.clicked.connect(self.show_stress_chart)
+        self.button_export.clicked.connect(self.save_csv)
+        self.button_clusterization.clicked.connect(self.analyze_researches)
+        self.button_import_researches.clicked.connect(self.load_csv)
+
+        self.set_up_plot()
+
+    def set_up_plot(self):
+        # Customize plot widget
+        app_color = self.palette().color(QtGui.QPalette.Window)
+        self.graph_widget.setBackground(app_color)
+        self.graph_widget.showGrid(x=True, y=True)
+        # TODO: что бы было видно первую точку, сделать точки жирными и ставить их на график
+        self.plot_widget = self.graph_widget.plotItem.plot(pen=pg.mkPen("b", width=2))
+
+    def startThreads(self):
+        self.threads.clear()
+        people = {
+            "Alice": random.randint(100, 10000) / 100,
+            "Bob": random.randint(100, 10000) / 100,
+        }
+        self.threads = [
+            self.createThread(person, amount)
+            for person, amount in people.items()
+        ]
+        for thread in self.threads:
+            thread.start()
+
+    def increment_cb_generation(self):
+        self.cb_generation.addItem("Поколение: " + str(self.cb_generation.count()))
+        self.cb_generation.setCurrentIndex(self.cb_generation.count() - 1)
+
+    def add_generation_stress_in_plot(self, data):
+        self.plot_widget.setData(data)
+        # self.graph_widget.plotItem.plot([generation], [stress], pen=pg.mkPen("b", width=2))
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        if self.ansys_manager is not None or self.ansys_manager != "MAPDL exited":
+            self.ansys_manager.run("/CLEAR")
+            self.ansys_manager.exit()  # correct closing ANSYS manager
+        print("Event: " + str(event))
+
+    def createThread(self, person, amount):
+        thread = QThread()
+        worker = WorkerThread()
+        worker.moveToThread(thread)
+        thread.started.connect(lambda: worker.withdraw(person, amount, self.mutex, self.balance))
+        worker.updatedBalance.connect(self.updateBalance)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        return thread
+
+    def updateBalance(self):
+        self.label_current_stress.setText(f"Current Balance: ${self.balance:,.2f}")
 
     def load_csv(self):
-        file_name = QtWidgets.QFileDialog.getOpenFileName(self.__dialog, 'Open file', r'..\..', '(*.csv)')
+        file_name = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', r'..\..', '(*.csv)')
         thread.start_new_thread(table_utils.import_research_list_from_csv, (file_name[0], self.result_table))
 
     def save_csv(self):
-        file_name = QtWidgets.QFileDialog.getSaveFileName(self.__dialog, 'Open file', r'..\..', '(*.csv)')
+        file_name = QtWidgets.QFileDialog.getSaveFileName(self, 'Open file', r'..\..', '(*.csv)')
         thread.start_new_thread(table_utils.save_csv_to_file, (file_name[0], self.result_table))
 
     def analyze_researches(self):
@@ -286,6 +165,7 @@ class Ui_Dialog(object):
             float(max(agent.working_zone[0][0], agent.working_zone[0][1])),
             float(min(agent.working_zone[1][0], agent.working_zone[1][1])),
             float(max(agent.working_zone[1][0], agent.working_zone[1][1])),
+            # Z values:
             float(0),
             float(250))
 
@@ -308,141 +188,112 @@ class Ui_Dialog(object):
             int(self.input_cells_oy_step.text()))
 
     def pick_model_file(self):
-        if DEBUG:
-            self.__detail_file_name = ['D:/DIPLOMA/app/researcher/model_250x250x250mm.igs']
-        else:
-            # открыть диалог выбора файла в текущей папке
-            self.__detail_file_name = QtWidgets.QFileDialog.getOpenFileName(self.__dialog, 'Open file', '..\\..',
-                                                                            '3D model.igs files (*.igs)')
+        # открыть диалог выбора файла в текущей папке
+        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', '..\\..',
+                                                             '3D model.igs files (*.igs)')
 
-        if self.__detail_file_name:  # не продолжать выполнение, если пользователь не выбрал файл
-            self.input_detail_file.setText(self.__detail_file_name[0])
+        if file_name:  # не продолжать выполнение, если пользователь не выбрал файл
+            self.input_detail_file.setText(file_name)
 
     def pick_schema_load_file(self):
-        if DEBUG:
-            self.__schema_load_file_name = [r'D:\DIPLOMA\app\researcher\load_schema2.txt']
-        else:
-            self.__schema_load_file_name = QtWidgets.QFileDialog.getOpenFileName(self.__dialog, 'Open file', '..\\..',
-                                                                                 '(*.txt)')
-        if self.__schema_load_file_name:  # не продолжать выполнение, если пользователь не выбрал файл
-            self.input_load_schema_file.setText(self.__schema_load_file_name[0])
+        # открыть диалог выбора файла в текущей папке
+        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', '..\\..',
+                                                             '(*.txt)')
 
-    def research(self):
-        self.calculation = Calculation()
+        if file_name:  # не продолжать выполнение, если пользователь не выбрал файл
+            self.input_load_schema_file.setText(file_name)
 
-        self.calculation.import_detail_and_load_schema_files(self.__detail_file_name[0],
-                                                             self.__schema_load_file_name[0])
-
+    def force_start_ansys(self):
         root_folder = self.calculation.create_root_folder_and_move_to_it()
+        while self.ansys_manager is None:
+            self.ansys_manager = self.calculation.init_ansys(root_folder)
 
-        ansys_manager = self.calculation.init_ansys(root_folder)
+    def set_up_research(self):
+        self.calculation.import_detail_and_load_schema_files(self.input_detail_file.text(),
+                                                             self.input_load_schema_file.text())
+
+        self.force_start_ansys()
 
         # Count zero_stress
-        # TODO: lock\unlock (1 step: count zero     2 step: count all others)
-        # thread.start_new_thread(self.calculation.calculate_zero_stress, (self.max_stress, ansys_manager))
+        self.zero_stress = self.calculation.calculate_zero_stress(self.label_zero_stress, self.ansys_manager)
 
-        self.calculation.calculate_zero_stress(self.max_stress, ansys_manager)
+        # Start the experiment
+        if self.is_running:
+            self.calculation.calculate_infinity(self.result_table, self.ansys_manager, self)
+        else:
+            self.calculation.calculate_next_iteration(self.result_table, self.ansys_manager, self)
 
-        # Start research
+    def next_generation_research(self):
+        if self.ansys_manager is None or self.ansys_manager == "MAPDL exited":
+            thread.start_new_thread(self.set_up_research, ())
+        else:
+            thread.start_new_thread(self.calculation.calculate_next_iteration,
+                                    (self.result_table, self.ansys_manager, self))
+
+    def research(self):
+        # Stop or pause calculating
+        self.is_running = not self.is_running
+        self.button_play_pause.setDefault(self.is_running)
+
+        if self.ansys_manager is None or self.ansys_manager == "MAPDL exited":
+            thread.start_new_thread(self.set_up_research, ())
+        else:
+            thread.start_new_thread(self.calculation.calculate_infinity, (self.result_table, self.ansys_manager, self))
+
         # TODO: the line below is for profiler ONLY
-        # self.calculation.calculate(self.result_table, ansys_manager)
-
-        thread.start_new_thread(self.calculation.calculate, (self.result_table, ansys_manager))
-
-    def retranslateUi(self, Dialog):
-        _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "Dialog"))
-        self.input_angle_num_start.setText(_translate("Dialog", "3"))
-        self.input_rotate_angle_start.setText(_translate("Dialog", "0"))
-        self.input_volume_part_start.setText(_translate("Dialog", "50"))
-        self.input_volume_part_end.setText(_translate("Dialog", "50"))
-        self.input_cells_ox_start.setText(_translate("Dialog", "4"))
-        self.input_cells_ox_step.setText(_translate("Dialog", "1"))
-        self.input_cells_ox_end.setText(_translate("Dialog", "4"))
-        self.input_cells_oy_start.setText(_translate("Dialog", "4"))
-        self.input_cells_oy_step.setText(_translate("Dialog", "1"))
-        self.input_cells_oy_end.setText(_translate("Dialog", "4"))
-        self.label_angle_number.setText(_translate("Dialog", "Количество углов"))
-        self.label_rotate_angle.setText(_translate("Dialog", "Угол поворота"))
-        self.label_volume_part.setText(_translate("Dialog", "Часть от объёма (%)"))
-        self.label_start.setText(_translate("Dialog", "Начало"))
-        self.label_end.setText(_translate("Dialog", "Конец"))
-        self.label_step.setText(_translate("Dialog", "Шаг"))
-        self.input_rotate_angle_end.setText(_translate("Dialog", "0"))
-        self.input_angle_num_end.setText(_translate("Dialog", "3"))
-        self.label_cells_ox.setText(_translate("Dialog", "Ячеек Ox"))
-        self.label_cells_oy.setText(_translate("Dialog", "Ячеек Oy"))
-        self.input_volume_part_step.setText(_translate("Dialog", "1"))
-        self.input_rotate_angle_step.setText(_translate("Dialog", "1"))
-        self.input_angle_num_step.setText(_translate("Dialog", "1"))
-        self.button_research.setText(_translate("Dialog", "Исследовать"))
-        self.button_result.setText(_translate("Dialog", "Результат"))
-        self.button_stress.setText(_translate("Dialog", "Стресс"))
-        self.create_researches_btn.setText(_translate("Dialog", "Создать эксперименты"))
-        self.import_researches_btn.setText(_translate("Dialog", "Импортировать эксперименты"))
-
-        self.label_body_z0.setText(_translate("Dialog", "Z0"))
-        self.input_body_z0.setText(_translate("Dialog", "0"))
-        self.label_body_x0.setText(_translate("Dialog", "X0"))
-        self.input_body_x0.setText(_translate("Dialog", "0"))
-        self.label_body_y0.setText(_translate("Dialog", "Y0"))
-        self.input_body_y0.setText(_translate("Dialog", "0"))
-        self.label_body_z1.setText(_translate("Dialog", "Z1"))
-        self.input_body_z1.setText(_translate("Dialog", "250"))
-        self.label_body_x1.setText(_translate("Dialog", "X1"))
-        self.input_body_x1.setText(_translate("Dialog", "250"))
-        self.label_body_y1.setText(_translate("Dialog", "Y1"))
-        self.input_body_y1.setText(_translate("Dialog", "250"))
-
-        self.button_detail_file.setText(_translate("Dialog", "Файл детали"))
-        self.button_load_schema_file.setText(_translate("Dialog", "Файл схемы нагрузки"))
-
-        self.max_stress.setText("Нагрузка 0:")
-        self.current_stress.setText("Нагрузка i:")
-        self.button_export.setText("Экспорт")
-        self.button_clusterization.setText("Анализ экспериментов")
-        self.input_detail_file.setText(r'D:\DIPLOMA\app\researcher\model_250x250x250mm.igs')
-        self.input_load_schema_file.setText(r'D:\DIPLOMA\app\researcher\load_schema2.txt')
+        # self.set_up_research()
 
     def fill_researches_list(self):
-        # # ===================== OLD =========================
-        # # Clear the old table if exists
-        # self.result_table.setRowCount(0)
-        #     
-        # context = self.__get_calculation_context()
-        # body_params = self.__get_body_params()
-        # calculation_params: List = self.__calc_params(context)
-        # 
-        # index = self.result_table.rowCount()
-        # 
-        # for calculation_param in calculation_params:
-        #     self.result_table.setRowCount(index + 1)
-        #     self.__add_calc_param_and_body_param_in_result_table(calculation_param, body_params, index)
-        #     index += 1
-        # # ===================== OLD =========================
-
         for i in range(POP_SIZE):
             agent = Chromosome()
             agent.generate_all_params()
-            body_params = self.__get_body_params_ga(agent)
-            
-            self.result_table.setRowCount(i + 1)
-            self.__add_ga_param_in_result_table(agent, body_params, i)
+            self.count_body_params_add_add_in_table(agent, i)
             del agent
-            
+
+    def change_stress_label(self, text):
+        self.label_current_stress.setText(text)
+
+    def count_body_params_add_add_in_table(self, agent, i):
+        body_params = self.__get_body_params_ga(agent)
+
+        self.result_table.setRowCount(i + 1)
+        self.__add_ga_param_in_result_table(agent, body_params, i)
+
+    def clear_result_table(self):
+        self.result_table.setRowCount(1)
+
+        self.result_table.setItem(0, ResultTableHeaders.ANGLE_NUM, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.ROTATE_ANGLE, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.VOLUME_PART, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.CELLS_OX, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.CELLS_OY, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.DETAIL_X0, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.DETAIL_X1, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.DETAIL_Y0, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.DETAIL_Y1, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.DETAIL_Z0, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.DETAIL_Z1, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.STATUS, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str()))
+
     def __add_ga_param_in_result_table(self, agent, bp, index):
         self.result_table.setItem(index, ResultTableHeaders.ANGLE_NUM, QTableWidgetItem(str(agent.angles)))
         self.result_table.setItem(index, ResultTableHeaders.ROTATE_ANGLE, QTableWidgetItem(str(agent.rotation)))
         self.result_table.setItem(index, ResultTableHeaders.VOLUME_PART, QTableWidgetItem(str(agent.size)))
         self.result_table.setItem(index, ResultTableHeaders.CELLS_OX, QTableWidgetItem(str(agent.x_amount)))
         self.result_table.setItem(index, ResultTableHeaders.CELLS_OY, QTableWidgetItem(str(agent.y_amount)))
-        
+
         self.result_table.setItem(index, ResultTableHeaders.DETAIL_X0, QTableWidgetItem(str(bp.get_x0_body())))
         self.result_table.setItem(index, ResultTableHeaders.DETAIL_X1, QTableWidgetItem(str(bp.get_xend_body())))
         self.result_table.setItem(index, ResultTableHeaders.DETAIL_Y0, QTableWidgetItem(str(bp.get_y0_body())))
         self.result_table.setItem(index, ResultTableHeaders.DETAIL_Y1, QTableWidgetItem(str(bp.get_yend_body())))
         self.result_table.setItem(index, ResultTableHeaders.DETAIL_Z0, QTableWidgetItem(str(bp.get_z0_body())))
         self.result_table.setItem(index, ResultTableHeaders.DETAIL_Z1, QTableWidgetItem(str(bp.get_zend_body())))
+
+        self.result_table.setItem(index, ResultTableHeaders.STATUS, QTableWidgetItem(str()))
+        self.result_table.setItem(index, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str()))
+
+        self.result_table.resizeColumnsToContents()
 
     def __add_calc_param_and_body_param_in_result_table(self, calculation_param: CalculationParams,
                                                         body_param: BodyParameters, index: int):
@@ -469,7 +320,7 @@ class Ui_Dialog(object):
         self.result_table.setItem(index, ResultTableHeaders.DETAIL_Z1,
                                   QTableWidgetItem(str(body_param.get_zend_body())))
 
-    def __calc_params(self, context) -> List[CalculationParams]:
+    def __calc_params(self, context):
         params = []
 
         for angle_num in range(context.angle_num_start, context.angle_num_end + 1, context.angle_num_step):
@@ -494,24 +345,13 @@ class Ui_Dialog(object):
             self.calculation.show_stress_chart(self.result_table.currentRow())
 
 
-class MyDialog(QtWidgets.QDialog):
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-    def closeEvent(self, event: QtGui.QCloseEvent):
-        # print(super(MyDialog, self).ansys_manager)  # Not working
-        print("Event: " + str(event))
-        super(MyDialog, self).closeEvent(event)
+def main():
+    # os.environ["PARSER_JAR"] = r"..\..\nodes_parser.jar"
+    app = QtWidgets.QApplication(sys.argv)  # Новый экземпляр QApplication
+    window = MainApp()  # Создаём объект класса ExampleApp
+    window.show()  # Показываем окно
+    app.exec_()  # и запускаем приложение
 
 
-if __name__ == "__main__":
-    import sys
-
-    os.environ["PARSER_JAR"] = r"..\..\nodes_parser.jar"
-    app = QtWidgets.QApplication(sys.argv)
-    Dialog = MyDialog()
-    ui = Ui_Dialog()
-    ui.setupUi(Dialog)
-    Dialog.show()
-    sys.exit(app.exec_())
+if __name__ == '__main__':  # Если мы запускаем файл напрямую, а не импортируем
+    main()  # то запускаем функцию main()

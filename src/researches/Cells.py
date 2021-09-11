@@ -129,7 +129,8 @@ class NAngleCells(AbstractRelationAngle):
         self.s_cells = self.v_cells / self.cell_height
         self.s_cell = self.s_cells / (self.rows * self.columns)
 
-        coef = self.s_cell / (self.body.width * self.body.length)
+        # Иногда тут ZeroDivisionError, но вобще было без комента, хоть и бесполезно
+        # coef = self.s_cell / (self.body.width * self.body.length)
 
         # size of angle
         angle_rad = 2 * pi / self.angle_num

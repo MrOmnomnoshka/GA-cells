@@ -2,20 +2,29 @@ import csv
 import json
 import os
 import pathlib
-import ansys.mapdl
+# import ansys.mapdl
 import re
 import traceback
 from datetime import datetime
 from typing import List
+from time import sleep
 from ansys.mapdl.core import launch_mapdl
 import pandas as pd
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QTableWidgetItem
 
+
+from PyQt5.QtCore import QMutex, QObject, QThread, pyqtSignal
+import logging
+
+
 from src.researches.ResultTableHeaders import ResultTableHeaders
 from src.researches.BodyParams import BodyParameters
 from src.researches.Cells import NAngleCells, CircleCells, RectangleCells
 from src.researches.Drawers import NAngleCellsDrawer, RectangleCellsDrawer
+from src.researches.GA import Genetic
+
+logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 
 class CalculationParams:
@@ -53,34 +62,118 @@ class CalculationContext:
         self.cells_oy_step = cells_oy_step
 
 
+class WorkerThread(QObject):
+    finished = pyqtSignal()
+    updatedBalance = pyqtSignal()
+
+    def withdraw(self, person, amount, mutex, balance):
+        logging.infqo("%s wants to withdraw $%.2f...", person, amount)
+        mutex.lock()
+        if balance - amount >= 0:
+            sleep(1)
+            balance -= amount
+            logging.info("-$%.2f accepted", amount)
+        else:
+            logging.info("-$%.2f rejected", amount)
+        logging.info("===Balance===: $%.2f", balance)
+        self.updatedBalance.emit()
+        mutex.unlock()
+        self.finished.emit()
+
+
 class Calculation:
     detail_fn = str
     load_schema_fn = str
     root_folder = str
+    zero_stress = int
+    generation_counter = 0
+    min_stress_for_all_time = list()
 
     def __init__(self):
         self.results = {}
 
-    def calculate_zero_stress(self, max_stress_label, ansys_manager):
-        try:
-            max_stress = self.research_zero_stress(ansys_manager)
-            if max_stress:
-                max_stress_label.setText("Нагрузка 0: " + str(max_stress))
+    def calculate_zero_stress(self, label, ansys_manager):
+        # label.setText(label.text() + " ****")
+        # TODO: uncomment
+        # max_stress = self.research_zero_stress(ansys_manager)
+        max_stress = 1061.04292
 
-        except Exception as e:
-            print(e)
-            return False
+        if max_stress:
+            # max_stress_label.setText(max_stress_label.text() + " " + str(max_stress))
+            # label.setText("Нагрузка нулевая: " + str(max_stress))
+            self.zero_stress = max_stress
 
-    def calculate(self, result_table, ansys_manager):
-        file_path = self.root_folder + os.sep + "researches.csv"
-        with open(file_path, mode="w", newline="") as researches_csv:
-            writer = csv.writer(researches_csv)
-            research_result_data = ["research_id", "angle_num", "rotate_angle", "vol_part", "cells_ox", "cells_oy",
-                                    "research_Status"]
-            writer.writerow(research_result_data)
+    def calculate_infinity(self, result_table, ansys_manager, app):
+        # An infinite cycle
+        while app.is_running:  # Continue the experiment
+            # self.calculate_next_iteration(result_table, ansys_manager, app)
 
-        # research_folder = self.root_folder + os.sep + "experiments"
-        # ansys = self.init_ansys(self.root_folder)
+            app.mutex.lock()
+            t0 = "Нагрузка текущая:"
+            t1 = "Нагрузка текущая: " + str(11111)
+            t2 = "Нагрузка текущая: " + str(22222)
+            t3 = "Нагрузка текущая: Жопа"
+            t4 = "Нагрузка текущая: " + "Жопа2"
+            t5 = "Нагрузка текущая: " + str(33333)
+
+            if app.label_current_stress.text() == t0:
+                app.change_stress_label(t1)
+            elif app.label_current_stress.text() == t1:
+                app.change_stress_label(t2)
+            elif app.label_current_stress.text() == t2:
+                app.change_stress_label(t3)
+            elif app.label_current_stress.text() == t3:
+                app.change_stress_label(t4)
+            elif app.label_current_stress.text() == t4:
+                app.change_stress_label(t5)
+            elif app.label_current_stress.text() == t5:
+                app.change_stress_label(t1)
+
+            # app.mutex.unlock()
+            sleep(1)
+
+        else:
+            sleep(1)  # not overload CPU on pause
+
+    def calculate_next_iteration(self, result_table, ansys_manager, app):
+        if self.generation_counter > 0:  # Not the first generation
+            # Create new generation
+            self.create_new_generation(result_table, app)
+
+        # Count current generation
+        self.calculate_current_research(result_table, ansys_manager, app)
+
+    def create_new_generation(self, result_table, app):
+        finished = self.get_all_finished_id_and_stress(result_table)
+
+        if len(finished) >= 2:
+            Genetic.start_new_generation(finished, self.zero_stress, result_table, app)
+        else:
+            # TODO: ??create and recalculate new generation??
+            print("Bad News: Not enough parents.")
+            pass
+
+    def calculate_current_research(self, result_table, ansys_manager, app):
+        # # recoding to a Exel file
+        # file_path = self.root_folder + os.sep + "researches.csv"
+        # with open(file_path, mode="w", newline="") as researches_csv:
+        #     writer = csv.writer(researches_csv)
+        #     research_result_data = ["research_id", "angle_num", "rotate_angle", "vol_part", "cells_ox", "cells_oy",
+        #                             "research_Status"]
+        #     writer.writerow(research_result_data)
+
+        # TODO: вылетает тут, азобраться че каво, мб из за паралелльности
+        # TODO: мб "pg.QtGui.QApplication.processEvents()"
+        # app.change_stress_label("Нагрузка текущая: " + str(1))
+        # app.change_stress_label("Нагрузка текущая: " + str(2))
+        # app.change_stress_label("Нагрузка текущая: Жопа")
+        # app.change_stress_label("Нагрузка текущая: " + "Жопа")
+        # app.change_stress_label("Нагрузка текущая: " + str(3))
+
+        if self.generation_counter > 0:
+            app.increment_cb_generation()
+
+        self.generation_counter += 1
         count = 0
         for row_index in range(result_table.rowCount()):
             param = self.__build_calculate_params(result_table, row_index)
@@ -88,25 +181,35 @@ class Calculation:
             cells = self.__calculate_cells(body_params, param)
 
             result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('In progress'))
+            self.update_table(result_table)
 
             try:
                 self.researchFromDetailModel(body_params, param, cells, self.root_folder,
                                              result_table, count, ansys_manager)
             except Exception as e:
                 result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Bad cell size'))
+                self.update_table(result_table)
                 print(e)
 
-            self.__write_row_in_csv_results(count, param)
+            # self.__write_row_in_csv_results(count, param)
             count += 1
 
-        # Create new generation
+        # Change stress label to current min stress
+        all_stress = [i[1] for i in self.get_all_finished_id_and_stress(result_table)]
+        min_stress = min(all_stress)
+        self.min_stress_for_all_time.append(min_stress)
+        # TODO: ВОТ ТУТ ВТОРОЙ РАЗ УМЕР!
+        # app.change_stress_label("Нагрузка текущая: " + str(min_stress))
+        app.add_generation_stress_in_plot(self.min_stress_for_all_time)
+
+    def get_all_finished_id_and_stress(self, result_table):
+        # TODO: (maybe) REMAKE IT IN UI.py
         finished = []
-        for i in range(0, result_table.rowCount()):
+        for i in range(result_table.rowCount()):
             if result_table.item(i, ResultTableHeaders.STATUS).text() == "Finished":
-                stress = str(result_table.item(i, ResultTableHeaders.MAX_PRESS).text())
+                stress = float(result_table.item(i, ResultTableHeaders.MAX_PRESS).text())
                 finished.append((i, stress))
-                # new_generation
-        print(finished)
+        return finished
 
     def import_detail_and_load_schema_files(self, detail_fn, load_schema_fn):
         self.detail_fn = detail_fn
@@ -188,17 +291,25 @@ class Calculation:
 
         return list
 
+    def update_table(self, table):
+        table.hide()
+        table.update()
+        table.show()
+
+    def exit_ansys_experiment(self, ansys):
+        ansys.save()
+        ansys.run("FINISH")
+        ansys.run("/CLEAR")
+        # ansys.run("/INPUT FILE+ D:\\Programs\\ANSYS Inc\\v192\\ANSYS\\apdl\\start.ans")
+
     def researchFromDetailModel(self, body_params, calc_param, cells, research_folder, result_table, count, ansys):
         try:
             self.results[count] = [body_params, calc_param, cells, research_folder, 'IN_PROGRESS']
             cells_coordinates = self.__execute_ansys_commands(ansys, cells, body_params, calc_param)
 
-            # TODO: if you don't need max_stress comment the line below
-            # max_press = 0
             max_press = self.get_max_press(ansys)
-            # TODO: add all 'file.db' aka model in folder like: (1,2,3...8)
-            # TODO: and read data from then by clicking 'result'
 
+            # TODO: add all 'file.db' aka model in folder like: (1,2,3...8) and read data from them by clicking 'result'
             try:
                 # TODO: See 'TODO' in inner function
                 # self.write_all_nodes_coordinates(ansys, research_folder)
@@ -206,15 +317,12 @@ class Calculation:
             except Exception as e:
                 print(e)
 
-            self.__write_cells_in_json(cells_coordinates, research_folder)
-            if result_table:
-                result_table.setItem(count, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str(max_press)))
-                result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Finished'))
-                # result_table.update()  # TODO: IS this line works???    (NO, It's not)
+            # self.__write_cells_in_json(cells_coordinates, research_folder)
+            result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Finished'))
+            result_table.setItem(count, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str(max_press)))
+            self.update_table(result_table)
 
-            # ansys.exit()
-            ansys.run("/CLEAR")
-            ansys.run("/INPUT FILE+ D:\\Programs\\ANSYS Inc\\v192\\ANSYS\\apdl\\start.ans")
+            self.exit_ansys_experiment(ansys)
 
             self.results[count] = [body_params, calc_param, cells, research_folder, 'FINISHED']
             return True
@@ -223,10 +331,10 @@ class Calculation:
             print(traceback.format_exc())
             if result_table:
                 result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Failed'))
+                self.update_table(result_table)
             self.results[count] = [body_params, calc_param, cells, research_folder, 'FAILED']
 
-            ansys.run("/CLEAR")
-            ansys.run("/INPUT FILE+ D:\\Programs\\ANSYS Inc\\v192\\ANSYS\\apdl\\start.ans")
+            self.exit_ansys_experiment(ansys)
             return False
 
     def research_zero_stress(self, ansys):
@@ -235,9 +343,7 @@ class Calculation:
             self.__run_load_schema(ansys)
             max_press = self.get_max_press(ansys)
 
-            # ansys.exit()
-            ansys.run("/CLEAR")
-            ansys.run("/INPUT FILE+ D:\\Programs\\ANSYS Inc\\v192\\ANSYS\\apdl\\start.ans")
+            self.exit_ansys_experiment(ansys)
 
             return max_press
 
@@ -300,7 +406,7 @@ class Calculation:
     def write_all_nodes_coordinates(self, ansys, research_folder: str, file: str = "nodes.csv"):
         nodes_data_frame = pd.DataFrame(columns=["node_id", "x", "y", "z"])
         start_node = 1
-        page_size = 5000  # TODO: it was '10000'
+        page_size = 7000  # TODO: it was '10000'
         end_node = start_node + page_size
         nodes_count = self.get_count_of_nodes(ansys)
         # ####
@@ -357,6 +463,7 @@ class Calculation:
         start = status.index("\n STRESS_MAX")
         # TODO: Да там и до этого 3 командами выше можно вытянуть макс стресс
         max_stress = re.findall('\d+\\.\d+', status[start:])[0]
+        # TODO: ногда бывает Finished stress = 0, просто сделать из него FAILED
 
         return float(max_stress)
 
@@ -371,8 +478,8 @@ class Calculation:
             run_location=root_folder,
             interactive_plotting=True,
             override=True,
-            start_timeout=6000,
-            nproc=10,
+            start_timeout=2000,
+            nproc=8,
             loglevel="DEBUG",
             log_apdl="w",
             exec_file=r"D:\Programs\ANSYS Inc\v192\ansys\bin\winx64\ANSYS192.exe")
@@ -386,12 +493,12 @@ class Calculation:
         #     return Cir
 
     def show_result(self, index):
-        if (self.results[index][ResultIndexes.STATUS] == 'FINISHED'):
+        if self.results[index][ResultIndexes.STATUS] == 'FINISHED':
             path = self.results[index][ResultIndexes.RESEARCH_FOLDER] + os.sep + "file.rst"
             os.system("py plot_result.py \"" + path + "\"")
 
     def show_stress_chart(self, index):
-        if (self.results[index][ResultIndexes.STATUS] == 'FINISHED'):
+        if self.results[index][ResultIndexes.STATUS] == 'FINISHED':
             path = self.results[index][ResultIndexes.RESEARCH_FOLDER] + os.sep + "file.rst"
             os.system("py plot_stress_chart.py \"" + path + "\"")
 
