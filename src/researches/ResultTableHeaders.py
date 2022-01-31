@@ -12,3 +12,4 @@ class ResultTableHeaders:
     DETAIL_Z1 = 10
     STATUS = 11
     MAX_PRESS = 12
+    FITNESS = 13

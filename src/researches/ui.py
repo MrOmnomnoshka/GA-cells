@@ -1,25 +1,23 @@
 import _thread as thread
 import sys
-import random
+# import random
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from PyQt5.QtCore import QMutex, QObject, QThread, pyqtSignal
+# from PyQt5.QtCore import QMutex, QObject, QThread, pyqtSignal
 
 from PyQt5.QtWidgets import QTableWidgetItem, QMessageBox
 import pyqtgraph as pg
 
-from src.researches.BodyParams import BodyParameters
+# from src.researches.BodyParams import BodyParameters
 from src.researches.Calculation import *
 from src.researches.ResultTableHeaders import ResultTableHeaders
 from src.researches.util import table_utils
 from src.researches.GA.Chromosome import Chromosome
 from forms import design  # Это наш конвертированный файл дизайна
+import src.researches.constants as constants
 
-POP_SIZE = 40
 
-
-# noinspection PyAttributeOutsideInit
 class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
 
     def __init__(self):
@@ -27,27 +25,18 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         super().__init__()
         self.setupUi(self)  # Это нужно для инициализации нашего дизайна
 
-        self.mutex = QMutex()  # lock class that allows to manage mutual exclusion
-        self.balance = 100
-        self.threads = []
+        # self.mutex = QMutex()  # lock class that allows to manage mutual exclusion
         self.calculation = Calculation()
-        self.ansys_manager = None
         self.is_running = False
 
         self.connect_all_buttons()
+        self.set_up_threads()
 
     def connect_all_buttons(self):
         self.button_detail_file.clicked.connect(self.pick_model_file)
         self.button_load_schema_file.clicked.connect(self.pick_schema_load_file)
         self.button_create_researches.clicked.connect(self.fill_researches_list)
-
-        # self.button_play_pause.clicked.connect(self.research)
-
-
-        self.button_play_pause.clicked.connect(self.startThreads)
-
-
-
+        self.button_play_pause.clicked.connect(self.research)
         self.button_next.clicked.connect(self.next_generation_research)
         # self.button_stop.clicked.connect()
         self.button_result.clicked.connect(self.show_result)
@@ -64,20 +53,15 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         self.graph_widget.setBackground(app_color)
         self.graph_widget.showGrid(x=True, y=True)
         # TODO: что бы было видно первую точку, сделать точки жирными и ставить их на график
-        self.plot_widget = self.graph_widget.plotItem.plot(pen=pg.mkPen("b", width=2))
+        # plot(x, y, color='green', linestyle='dashed', linewidth=3,
+        #       marker='o', markerfacecolor='blue', markersize=12)
+        self.plot_widget = self.graph_widget.plotItem.plot(pen=pg.mkPen("b", width=2, marker="o", markersize=25))
 
-    def startThreads(self):
-        self.threads.clear()
-        people = {
-            "Alice": random.randint(100, 10000) / 100,
-            "Bob": random.randint(100, 10000) / 100,
-        }
-        self.threads = [
-            self.createThread(person, amount)
-            for person, amount in people.items()
-        ]
-        for thread in self.threads:
-            thread.start()
+    def set_up_threads(self):
+        # --- Подключаем сигналы к слоту, слот будет вызываться с параметрами сигнала в нужное время.
+        self.calculation.threadFinish.connect(self.threadFinished)
+        self.calculation.current_stress_signal.connect(self.change_current_stress_label)
+        self.calculation.zero_stress_signal.connect(self.change_zero_stress_label)
 
     def increment_cb_generation(self):
         self.cb_generation.addItem("Поколение: " + str(self.cb_generation.count()))
@@ -88,32 +72,23 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         # self.graph_widget.plotItem.plot([generation], [stress], pen=pg.mkPen("b", width=2))
 
     def closeEvent(self, event: QtGui.QCloseEvent):
-        if self.ansys_manager is not None or self.ansys_manager != "MAPDL exited":
-            self.ansys_manager.run("/CLEAR")
-            self.ansys_manager.exit()  # correct closing ANSYS manager
-        print("Event: " + str(event))
-
-    def createThread(self, person, amount):
-        thread = QThread()
-        worker = WorkerThread()
-        worker.moveToThread(thread)
-        thread.started.connect(lambda: worker.withdraw(person, amount, self.mutex, self.balance))
-        worker.updatedBalance.connect(self.updateBalance)
-        worker.finished.connect(thread.quit)
-        worker.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
-        return thread
-
-    def updateBalance(self):
-        self.label_current_stress.setText(f"Current Balance: ${self.balance:,.2f}")
+        if self.calculation is not None:
+            self.calculation.clear_and_exit()
+        # print("Event: " + str(event))
 
     def load_csv(self):
         file_name = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', r'..\..', '(*.csv)')
         thread.start_new_thread(table_utils.import_research_list_from_csv, (file_name[0], self.result_table))
 
-    def save_csv(self):
-        file_name = QtWidgets.QFileDialog.getSaveFileName(self, 'Open file', r'..\..', '(*.csv)')
-        thread.start_new_thread(table_utils.save_csv_to_file, (file_name[0], self.result_table))
+    def save_csv(self, default=None):
+        # TODO: BUG: crashes after save and count next gen
+        if default:
+            file_name = default
+        else:
+            file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Open file', r'..\..', '(*.csv)')
+
+        if file_name:
+            table_utils.save_csv_to_file(file_name, self.result_table)
 
     def analyze_researches(self):
         rows = self.result_table.rowCount()
@@ -150,16 +125,7 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
 
         pass
 
-    def __get_body_params(self) -> BodyParameters:
-        return BodyParameters(
-            float(self.input_body_x0.text()),
-            float(self.input_body_x1.text()),
-            float(self.input_body_y0.text()),
-            float(self.input_body_y1.text()),
-            float(self.input_body_z0.text()),
-            float(self.input_body_z1.text()))
-
-    def __get_body_params_ga(self, agent) -> BodyParameters:
+    def __get_body_params_ga(self, agent):
         return BodyParameters(
             float(min(agent.working_zone[0][0], agent.working_zone[0][1])),
             float(max(agent.working_zone[0][0], agent.working_zone[0][1])),
@@ -169,91 +135,96 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
             float(0),
             float(250))
 
-    def __get_calculation_context(self) -> CalculationContext:
-        return CalculationContext(
-            int(self.input_rotate_angle_start.text()),
-            int(self.input_rotate_angle_end.text()),
-            int(self.input_rotate_angle_step.text()),
-            int(self.input_angle_num_start.text()),
-            int(self.input_angle_num_end.text()),
-            int(self.input_angle_num_step.text()),
-            int(self.input_volume_part_start.text()),
-            int(self.input_volume_part_end.text()),
-            int(self.input_volume_part_step.text()),
-            int(self.input_cells_ox_start.text()),
-            int(self.input_cells_ox_end.text()),
-            int(self.input_cells_ox_step.text()),
-            int(self.input_cells_oy_start.text()),
-            int(self.input_cells_oy_end.text()),
-            int(self.input_cells_oy_step.text()))
-
     def pick_model_file(self):
         # открыть диалог выбора файла в текущей папке
-        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', '..\\..',
-                                                             '3D model.igs files (*.igs)')
+        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', '..\\..', '3D model.igs files (*.igs)')
 
         if file_name:  # не продолжать выполнение, если пользователь не выбрал файл
             self.input_detail_file.setText(file_name)
 
     def pick_schema_load_file(self):
         # открыть диалог выбора файла в текущей папке
-        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', '..\\..',
-                                                             '(*.txt)')
+        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', '..\\..', '(*.txt)')
 
         if file_name:  # не продолжать выполнение, если пользователь не выбрал файл
             self.input_load_schema_file.setText(file_name)
-
-    def force_start_ansys(self):
-        root_folder = self.calculation.create_root_folder_and_move_to_it()
-        while self.ansys_manager is None:
-            self.ansys_manager = self.calculation.init_ansys(root_folder)
 
     def set_up_research(self):
         self.calculation.import_detail_and_load_schema_files(self.input_detail_file.text(),
                                                              self.input_load_schema_file.text())
 
-        self.force_start_ansys()
+        # Prepare arguments for methods in Calculation class
+        self.calculation.result_table = self.result_table
+        self.calculation.app = self
 
         # Count zero_stress
-        self.zero_stress = self.calculation.calculate_zero_stress(self.label_zero_stress, self.ansys_manager)
+        self.calculation.current_task = 0
+        self.calculation.start()
+
+        # Wait until it finishes
+        while self.calculation.isRunning():
+            QtCore.QThread.msleep(250)
 
         # Start the experiment
         if self.is_running:
-            self.calculation.calculate_infinity(self.result_table, self.ansys_manager, self)
+            # calculate infinity
+            self.calculation.current_task = 2
+            self.calculation.start()
         else:
-            self.calculation.calculate_next_iteration(self.result_table, self.ansys_manager, self)
+            # calculate next iteration
+            self.calculation.current_task = 1
+            self.calculation.start()
 
     def next_generation_research(self):
-        if self.ansys_manager is None or self.ansys_manager == "MAPDL exited":
+        if self.calculation.ansys_manager is None:
             thread.start_new_thread(self.set_up_research, ())
         else:
-            thread.start_new_thread(self.calculation.calculate_next_iteration,
-                                    (self.result_table, self.ansys_manager, self))
+            # calculate next iteration
+            self.calculation.current_task = 1
+            self.calculation.start()  # TODO: Бесконечно генерятся потоки, мб есть на них ограничение и все полетит
+            # thread.start_new_thread(self.calculation.calculate_next_iteration, (self.result_table, self))
+
+    def on_threadSignal(self, value):
+        # функция вывода чисел
+        """ Визуализация потоковых данных-WorkThread.  """
+        self.label_current_stress.setNum(value)
+
+    def threadFinished(self):
+        self.label_current_stress.setText("{} - Финиш!".format(self.label_current_stress.text()))
+        # print("FINISHED!")
+
+    def change_current_stress_label(self, text):
+        self.label_current_stress.setText("Нагрузка текущая: " + text)
+
+    def change_zero_stress_label(self, text):
+        self.label_zero_stress.setText("Нагрузка нулевая: " + text)
 
     def research(self):
         # Stop or pause calculating
         self.is_running = not self.is_running
         self.button_play_pause.setDefault(self.is_running)
 
-        if self.ansys_manager is None or self.ansys_manager == "MAPDL exited":
+        if self.calculation.ansys_manager is None:
+            # TODO: thread? or PyQt Thread?! xD
             thread.start_new_thread(self.set_up_research, ())
         else:
-            thread.start_new_thread(self.calculation.calculate_infinity, (self.result_table, self.ansys_manager, self))
+            # calculate infinity
+            if self.is_running:
+                self.calculation.current_task = 2
+                self.calculation.start()
+            # thread.start_new_thread(self.calculation.calculate_infinity, (self.result_table, self))
 
-        # TODO: the line below is for profiler ONLY
+        # !!NOTE!!: the line below is for profiler ONLY
         # self.set_up_research()
 
     def fill_researches_list(self):
-        for i in range(POP_SIZE):
+        for i in range(constants.POPULATION_SIZE):
             agent = Chromosome()
             agent.generate_all_params()
-            self.count_body_params_add_add_in_table(agent, i)
+            self.count_body_params_and_add_in_table(agent, i)
             del agent
 
-    def change_stress_label(self, text):
-        self.label_current_stress.setText(text)
-
-    def count_body_params_add_add_in_table(self, agent, i):
+    def count_body_params_and_add_in_table(self, agent, i):
         body_params = self.__get_body_params_ga(agent)
 
         self.result_table.setRowCount(i + 1)
@@ -262,6 +233,7 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
     def clear_result_table(self):
         self.result_table.setRowCount(1)
 
+        # TODO: redo it in designer.ui
         self.result_table.setItem(0, ResultTableHeaders.ANGLE_NUM, QTableWidgetItem(str()))
         self.result_table.setItem(0, ResultTableHeaders.ROTATE_ANGLE, QTableWidgetItem(str()))
         self.result_table.setItem(0, ResultTableHeaders.VOLUME_PART, QTableWidgetItem(str()))
@@ -275,8 +247,10 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         self.result_table.setItem(0, ResultTableHeaders.DETAIL_Z1, QTableWidgetItem(str()))
         self.result_table.setItem(0, ResultTableHeaders.STATUS, QTableWidgetItem(str()))
         self.result_table.setItem(0, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str()))
+        self.result_table.setItem(0, ResultTableHeaders.FITNESS, QTableWidgetItem(str()))
 
     def __add_ga_param_in_result_table(self, agent, bp, index):
+        # TODO: redo it in designer.ui
         self.result_table.setItem(index, ResultTableHeaders.ANGLE_NUM, QTableWidgetItem(str(agent.angles)))
         self.result_table.setItem(index, ResultTableHeaders.ROTATE_ANGLE, QTableWidgetItem(str(agent.rotation)))
         self.result_table.setItem(index, ResultTableHeaders.VOLUME_PART, QTableWidgetItem(str(agent.size)))
@@ -320,25 +294,16 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         self.result_table.setItem(index, ResultTableHeaders.DETAIL_Z1,
                                   QTableWidgetItem(str(body_param.get_zend_body())))
 
-    def __calc_params(self, context):
-        params = []
-
-        for angle_num in range(context.angle_num_start, context.angle_num_end + 1, context.angle_num_step):
-            for rotate_angle in range(context.rotate_angle_start, context.rotate_angle_end + 1,
-                                      context.rotate_angle_step):
-                for volume_part in range(context.volume_part_start, context.volume_part_end + 1,
-                                         context.volume_part_step):
-                    for cells_ox in range(context.cells_ox_start, context.cells_ox_end + 1, context.cells_ox_step):
-                        for cells_oy in range(context.cells_oy_start, context.cells_oy_end + 1, context.cells_oy_step):
-                            params.append(CalculationParams(rotate_angle, angle_num, volume_part, cells_ox, cells_oy))
-
-        return params
+    def add_parents_data(self, stress, fitness):
+        for i in range(2):
+            self.result_table.setItem(i, ResultTableHeaders.STATUS, QTableWidgetItem(f"Parent {i + 1}"))
+            self.result_table.setItem(i, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str(round(stress[i], 4))))
+            self.result_table.setItem(i, ResultTableHeaders.FITNESS, QTableWidgetItem(str(round(fitness[i], 4))))
 
     def show_result(self):
         # if row is picked
         if self.result_table.currentRow() != -1:
             self.calculation.show_result(self.result_table.currentRow())
-            pass
 
     def show_stress_chart(self):
         if self.result_table.currentRow() != -1:

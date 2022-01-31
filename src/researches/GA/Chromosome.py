@@ -3,21 +3,27 @@ from math import ceil
 
 
 class Chromosome:
-    mut_percentage = 10
-    wz_min, wz_max = 0, 250  # TODO: x, y, z
-    an_min, an_max = 3, 15  # 8
-    rt_min, rt_max = 0, 180
-    sz_min, sz_max = 1, 100
-    xa_min, xa_max = 1, 1  # 15
-    ya_min, ya_max = 1, 1  # 15
+    mut_percentage = 5
 
-    def __init__(self, working_zone=tuple, angles=int, rotation=int, size=int, x_amount=int, y_amount=int):
+    # TODO: auto-make x, y, z for BodySize
+    x_min, x_max = 10, 240
+    y_min, y_max = 10, 240
+    z_min, z_max = 0, 250
+
+    an_min, an_max = 3, 8  # 8
+    rt_min, rt_max = 0, 360
+    sz_min, sz_max = 1, 99
+    xa_min, xa_max = 1, 10  # 15
+    ya_min, ya_max = 1, 10  # 15
+
+    def __init__(self, working_zone=tuple, angles=int, rotation=int, size=int, x_amount=int, y_amount=int, depth=False):
         self.working_zone = working_zone
         self.angles = angles
         self.rotation = rotation
         self.size = size
         self.x_amount = x_amount
         self.y_amount = y_amount
+        self.depth = depth
 
     def generate_all_params(self):
         # TODO: Auto-add values by body size
@@ -47,16 +53,22 @@ class Chromosome:
             return parent2
 
     def generate_working_zone(self):
-        x_start = randint(self.wz_min, self.wz_max - 1)
-        x_end = randint(x_start + 1, self.wz_max)
+        x_start = randint(self.x_min, self.x_max - 1)
+        x_end = randint(x_start + 1, self.x_max)
 
-        y_start = randint(self.wz_min, self.wz_max - 1)
-        y_end = randint(y_start + 1, self.wz_max)
+        y_start = randint(self.y_min, self.y_max - 1)
+        y_end = randint(y_start + 1, self.y_max)
 
         x_size = x_start, x_end
         y_size = y_start, y_end
 
-        self.working_zone = (x_size, y_size)
+        if self.depth:
+            z_start = randint(self.z_min, self.z_max - 1)
+            z_end = randint(z_start + 1, self.z_max)
+            z_size = z_start, z_end
+            self.working_zone = (x_size, y_size, z_size)
+        else:
+            self.working_zone = (x_size, y_size)
 
     def generate_cells_angles(self):
         self.angles = randint(self.an_min, self.an_max)
@@ -72,19 +84,41 @@ class Chromosome:
         self.y_amount = randint(self.ya_min, self.ya_max)
 
     def _mutate_working_zone(self):
-        wz_mut_value = self.__create_mut_value_for_parameter(self.wz_min, self.wz_max, self.mut_percentage)
+        x_size = self._mutate_x_size()
+        y_size = self._mutate_y_size()
 
-        # x_size, y_size = self.working_zone
-        x_size, y_size = [list(i) for i in self.working_zone]
-        x_size[0] = self.__check_borders(x_size[0] + randint(-wz_mut_value, wz_mut_value), self.wz_min, self.wz_max)
-        x_size[1] = self.__check_borders(x_size[1] + randint(-wz_mut_value, wz_mut_value), self.wz_min, self.wz_max)
-        y_size[0] = self.__check_borders(y_size[0] + randint(-wz_mut_value, wz_mut_value), self.wz_min, self.wz_max)
-        y_size[1] = self.__check_borders(y_size[1] + randint(-wz_mut_value, wz_mut_value), self.wz_min, self.wz_max)
-        correct_working_zone = (min(x_size), max(x_size)), (min(y_size), max(y_size))
-        self.working_zone = correct_working_zone
+        if self.depth:
+            z_size = self._mutate_z_size()
+            self.working_zone = x_size, y_size, z_size
+        else:
+            self.working_zone = x_size, y_size
+
+    def _mutate_x_size(self):
+        start, stop = self.working_zone[0]
+        start = self.__mutate_parameter(self.x_min, self.x_max, start)
+        stop = self.__mutate_parameter(self.x_min, self.x_max, stop)
+        if start == stop:
+            return self._mutate_x_size()
+        return min(start, stop), max(start, stop)
+
+    def _mutate_y_size(self):
+        start, stop = self.working_zone[1]
+        start = self.__mutate_parameter(self.y_min, self.y_max, start)
+        stop = self.__mutate_parameter(self.y_min, self.y_max, stop)
+        if start == stop:
+            return self._mutate_y_size()
+        return min(start, stop), max(start, stop)
+
+    def _mutate_z_size(self):
+        start, stop = self.working_zone[2]
+        start = self.__mutate_parameter(self.z_min, self.z_max, start)
+        stop = self.__mutate_parameter(self.z_min, self.z_max, stop)
+        if start == stop:
+            return self._mutate_z_size()
+        return min(start, stop), max(start, stop)
 
     def _mutate_cells_angles(self):
-        self.angles = self.__mutate_parameter(self.an_min, self.an_max, self.angles)
+            self.angles = self.__mutate_parameter(self.an_min, self.an_max, self.angles)
 
     def _mutate_cells_rotation(self):
         self.rotation = self.__mutate_parameter(self.rt_min, self.rt_max, self.rotation)

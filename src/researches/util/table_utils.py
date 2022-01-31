@@ -1,6 +1,6 @@
 import csv
 
-from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QTableWidgetItem
 
 
@@ -17,6 +17,7 @@ def import_research_list_from_csv(csv_file: str, table: QtWidgets.QTableWidget):
             for field in row:
                 table.setItem(index, column, QTableWidgetItem(field))
                 column += 1
+        table.resizeColumnsToContents()
 
 
 def save_csv_to_file(csv_file: str, table: QtWidgets.QTableWidget):

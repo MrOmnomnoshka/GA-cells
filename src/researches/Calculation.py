@@ -2,33 +2,26 @@ import csv
 import json
 import os
 import pathlib
-# import ansys.mapdl
+import shutil
+import ansys.mapdl
 import re
 import traceback
-from datetime import datetime
-from typing import List
-from time import sleep
+# from datetime import datetime
+from time import sleep, strftime, localtime
 from ansys.mapdl.core import launch_mapdl
 import pandas as pd
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QTableWidgetItem
-
-
-from PyQt5.QtCore import QMutex, QObject, QThread, pyqtSignal
-import logging
-
 
 from src.researches.ResultTableHeaders import ResultTableHeaders
 from src.researches.BodyParams import BodyParameters
 from src.researches.Cells import NAngleCells, CircleCells, RectangleCells
 from src.researches.Drawers import NAngleCellsDrawer, RectangleCellsDrawer
 from src.researches.GA import Genetic
-
-logging.basicConfig(format="%(message)s", level=logging.INFO)
+import src.researches.constants as constants
 
 
 class CalculationParams:
-
     def __init__(self, rotate_angle: int, angle_num: int, volume_part: int, cells_ox: int, cells_oy: int):
         self.rotate_angle = rotate_angle
         self.angle_num = angle_num
@@ -38,7 +31,6 @@ class CalculationParams:
 
 
 class CalculationContext:
-
     def __init__(self,
                  rotate_angle_start: int, rotate_angle_end: int, rotate_angle_step: int,
                  angle_num_start: int, angle_num_end: int, angle_num_step: int,
@@ -62,26 +54,7 @@ class CalculationContext:
         self.cells_oy_step = cells_oy_step
 
 
-class WorkerThread(QObject):
-    finished = pyqtSignal()
-    updatedBalance = pyqtSignal()
-
-    def withdraw(self, person, amount, mutex, balance):
-        logging.infqo("%s wants to withdraw $%.2f...", person, amount)
-        mutex.lock()
-        if balance - amount >= 0:
-            sleep(1)
-            balance -= amount
-            logging.info("-$%.2f accepted", amount)
-        else:
-            logging.info("-$%.2f rejected", amount)
-        logging.info("===Balance===: $%.2f", balance)
-        self.updatedBalance.emit()
-        mutex.unlock()
-        self.finished.emit()
-
-
-class Calculation:
+class Calculation(QtCore.QThread):
     detail_fn = str
     load_schema_fn = str
     root_folder = str
@@ -89,59 +62,67 @@ class Calculation:
     generation_counter = 0
     min_stress_for_all_time = list()
 
-    def __init__(self):
-        self.results = {}
+    ansys_manager = None
+    result_table = None
+    app = None
 
-    def calculate_zero_stress(self, label, ansys_manager):
-        # label.setText(label.text() + " ****")
+    # Потоковая задача
+    current_stress_signal = QtCore.pyqtSignal(str)  # Объявляем сигнал, с аргументом(int)
+    zero_stress_signal = QtCore.pyqtSignal(str)  # Объявляем сигнал, с аргументом(int)
+    threadFinish = QtCore.pyqtSignal()
+    current_task = None
+
+    def __init__(self):
+        super().__init__()
+        # self.results = {}  # TODO: all generations data in 1 place
+
+    def run(self, *args, **kwargs):
+        # Start ansys
+        if self.ansys_manager is None:
+            self.ansys_manager = self.force_start_ansys()
+
+        # Start any experiment
+        if self.current_task == 0:
+            self.calculate_zero_stress()
+        elif self.current_task == 1:
+            self.calculate_next_iteration(self.result_table, self.app)
+        elif self.current_task == 2:
+            self.calculate_infinity(self.result_table, self.app)
+
+        # Currect exit thread
+        # self.threadFinish.emit()
+        self.quit()
+
+    def calculate_zero_stress(self):
+        self.zero_stress_signal.emit(" *****")
         # TODO: uncomment
-        # max_stress = self.research_zero_stress(ansys_manager)
+        # max_stress = self.research_zero_stress(self.ansys_manager)
         max_stress = 1061.04292
 
         if max_stress:
-            # max_stress_label.setText(max_stress_label.text() + " " + str(max_stress))
-            # label.setText("Нагрузка нулевая: " + str(max_stress))
+            self.zero_stress_signal.emit(str(max_stress))
+            self.current_stress_signal.emit(str(max_stress))
             self.zero_stress = max_stress
 
-    def calculate_infinity(self, result_table, ansys_manager, app):
-        # An infinite cycle
-        while app.is_running:  # Continue the experiment
-            # self.calculate_next_iteration(result_table, ansys_manager, app)
+    def calculate_next_iteration(self, result_table, app):
+        if self.generation_counter >= constants.GENERATION_LIMIT:
+            app.is_running = False
+            return 0
 
-            app.mutex.lock()
-            t0 = "Нагрузка текущая:"
-            t1 = "Нагрузка текущая: " + str(11111)
-            t2 = "Нагрузка текущая: " + str(22222)
-            t3 = "Нагрузка текущая: Жопа"
-            t4 = "Нагрузка текущая: " + "Жопа2"
-            t5 = "Нагрузка текущая: " + str(33333)
-
-            if app.label_current_stress.text() == t0:
-                app.change_stress_label(t1)
-            elif app.label_current_stress.text() == t1:
-                app.change_stress_label(t2)
-            elif app.label_current_stress.text() == t2:
-                app.change_stress_label(t3)
-            elif app.label_current_stress.text() == t3:
-                app.change_stress_label(t4)
-            elif app.label_current_stress.text() == t4:
-                app.change_stress_label(t5)
-            elif app.label_current_stress.text() == t5:
-                app.change_stress_label(t1)
-
-            # app.mutex.unlock()
-            sleep(1)
-
-        else:
-            sleep(1)  # not overload CPU on pause
-
-    def calculate_next_iteration(self, result_table, ansys_manager, app):
         if self.generation_counter > 0:  # Not the first generation
             # Create new generation
             self.create_new_generation(result_table, app)
 
         # Count current generation
-        self.calculate_current_research(result_table, ansys_manager, app)
+        self.calculate_current_research(result_table, app)
+
+    def calculate_infinity(self, result_table, app):
+        # An infinite cycle
+        while app.is_running:  # Continue the experiment
+            self.calculate_next_iteration(result_table, app)
+            QtCore.QThread.msleep(250)
+        else:
+            sleep(1)  # not overload CPU on pause
 
     def create_new_generation(self, result_table, app):
         finished = self.get_all_finished_id_and_stress(result_table)
@@ -153,7 +134,25 @@ class Calculation:
             print("Bad News: Not enough parents.")
             pass
 
-    def calculate_current_research(self, result_table, ansys_manager, app):
+        # def show_current_fitness(self, result_table, zero_stress):
+        #     finished = self.get_all_finished_id_and_stress(result_table)
+        #
+        #     population = Genetic.get_old_population(finished, result_table)
+        #
+        #     for agent in population:
+        #         # Genetic.calculate_fitness(agent, zero_stress)
+        #         Genetic.calculate_fitness_by_params(zero_stress,agent[1],agent[0].size,agent[0].x_amount*agent[0].y_amount)
+        #
+        #     fitness = []
+        #     for agent in population:
+        #         fitness.append(agent[2])
+        #
+        #     a = enumerate(fitness)
+        #     for i, j in list(a):
+        #         result_table.setItem(i, ResultTableHeaders.FITNESS, QTableWidgetItem(str(round(j, 3))))
+        self.update_table(result_table)
+
+    def calculate_current_research(self, result_table, app):
         # # recoding to a Exel file
         # file_path = self.root_folder + os.sep + "researches.csv"
         # with open(file_path, mode="w", newline="") as researches_csv:
@@ -161,52 +160,63 @@ class Calculation:
         #     research_result_data = ["research_id", "angle_num", "rotate_angle", "vol_part", "cells_ox", "cells_oy",
         #                             "research_Status"]
         #     writer.writerow(research_result_data)
-
-        # TODO: вылетает тут, азобраться че каво, мб из за паралелльности
-        # TODO: мб "pg.QtGui.QApplication.processEvents()"
-        # app.change_stress_label("Нагрузка текущая: " + str(1))
-        # app.change_stress_label("Нагрузка текущая: " + str(2))
-        # app.change_stress_label("Нагрузка текущая: Жопа")
-        # app.change_stress_label("Нагрузка текущая: " + "Жопа")
-        # app.change_stress_label("Нагрузка текущая: " + str(3))
+        range_start = 2 if constants.SAVE_PARENTS and self.generation_counter > 0 else 0
 
         if self.generation_counter > 0:
             app.increment_cb_generation()
 
+        # Backup every 5 generation in case of some breaks
+        if (self.generation_counter + 1) % 2 == 0:
+            self.app.save_csv("last_research.csv")
+
         self.generation_counter += 1
-        count = 0
-        for row_index in range(result_table.rowCount()):
+        for row_index in range(range_start, constants.POPULATION_SIZE):
             param = self.__build_calculate_params(result_table, row_index)
             body_params = self.__build_body_params(result_table, row_index)
             cells = self.__calculate_cells(body_params, param)
 
-            result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('In progress'))
+            result_table.setItem(row_index, ResultTableHeaders.STATUS, QTableWidgetItem('Solving'))
             self.update_table(result_table)
 
             try:
                 self.researchFromDetailModel(body_params, param, cells, self.root_folder,
-                                             result_table, count, ansys_manager)
+                                             result_table, row_index)
+                if constants.SAVE_TEMP_FILES:
+                    self.save_db_and_rst_files(row_index)
+
             except Exception as e:
-                result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Bad cell size'))
+                result_table.setItem(row_index, ResultTableHeaders.STATUS, QTableWidgetItem('ERROR!'))
                 self.update_table(result_table)
+                # app.force_start_ansys() # TODO: ???
                 print(e)
 
-            # self.__write_row_in_csv_results(count, param)
-            count += 1
+            # self.__write_row_in_csv_results(row_index, param)
+            # count += 1
 
         # Change stress label to current min stress
         all_stress = [i[1] for i in self.get_all_finished_id_and_stress(result_table)]
         min_stress = min(all_stress)
         self.min_stress_for_all_time.append(min_stress)
-        # TODO: ВОТ ТУТ ВТОРОЙ РАЗ УМЕР!
-        # app.change_stress_label("Нагрузка текущая: " + str(min_stress))
+        self.current_stress_signal.emit(str(min_stress))
         app.add_generation_stress_in_plot(self.min_stress_for_all_time)
+
+    def save_db_and_rst_files(self, row_index):
+        # Copy '.db' files
+        original = self.root_folder + os.sep + 'file.db'
+        target = self.root_folder + os.sep + f'{row_index + 1}.db'
+        shutil.copyfile(original, target)
+
+        # Copy '.rst' files
+        original = self.root_folder + os.sep + 'file.rst'
+        target = self.root_folder + os.sep + f'{row_index + 1}.rst'
+        shutil.copyfile(original, target)
 
     def get_all_finished_id_and_stress(self, result_table):
         # TODO: (maybe) REMAKE IT IN UI.py
         finished = []
-        for i in range(result_table.rowCount()):
-            if result_table.item(i, ResultTableHeaders.STATUS).text() == "Finished":
+        for i in range(constants.POPULATION_SIZE):
+            status = result_table.item(i, ResultTableHeaders.STATUS).text()
+            if status == "Finished" or status == "Parent 1" or status == "Parent 2":
                 stress = float(result_table.item(i, ResultTableHeaders.MAX_PRESS).text())
                 finished.append((i, stress))
         return finished
@@ -277,73 +287,103 @@ class Calculation:
         # TODO: calc body dynamically for different models
         return BodyParameters(float(0), float(250), float(0), float(250), float(0), float(250))
 
-    def __calc_params(self, context) -> List[CalculationParams]:
-        list = []
-
-        for angle_num in range(context.angle_num_start, context.angle_num_end + 1, context.angle_num_step):
-            for rotate_angle in range(context.rotate_angle_start, context.rotate_angle_end + 1,
-                                      context.rotate_angle_step):
-                for volume_part in range(context.volume_part_start, context.volume_part_end + 1,
-                                         context.volume_part_step):
-                    for cells_ox in range(context.cells_ox_start, context.cells_ox_end + 1, context.cells_ox_step):
-                        for cells_oy in range(context.cells_oy_start, context.cells_oy_end + 1, context.cells_oy_step):
-                            list.append(CalculationParams(rotate_angle, angle_num, volume_part, cells_ox, cells_oy))
-
-        return list
+    # def __calc_params(self, context) -> List[CalculationParams]:
+    #     list = []
+    #
+    #     for angle_num in range(context.angle_num_start, context.angle_num_end + 1, context.angle_num_step):
+    #         for rotate_angle in range(context.rotate_angle_start, context.rotate_angle_end + 1,
+    #                                   context.rotate_angle_step):
+    #             for volume_part in range(context.volume_part_start, context.volume_part_end + 1,
+    #                                      context.volume_part_step):
+    #                 for cells_ox in range(context.cells_ox_start, context.cells_ox_end + 1, context.cells_ox_step):
+    #                     for cells_oy in range(context.cells_oy_start, context.cells_oy_end + 1, context.cells_oy_step):
+    #                         list.append(CalculationParams(rotate_angle, angle_num, volume_part, cells_ox, cells_oy))
+    #
+    #     return list
 
     def update_table(self, table):
+        pass
         table.hide()
         table.update()
+        # table.resizeColumnsToContents()
         table.show()
 
-    def exit_ansys_experiment(self, ansys):
-        ansys.save()
-        ansys.run("FINISH")
-        ansys.run("/CLEAR")
-        # ansys.run("/INPUT FILE+ D:\\Programs\\ANSYS Inc\\v192\\ANSYS\\apdl\\start.ans")
-
-    def researchFromDetailModel(self, body_params, calc_param, cells, research_folder, result_table, count, ansys):
+    def researchFromDetailModel(self, body_params, calc_param, cells, research_folder, result_table, count):
         try:
-            self.results[count] = [body_params, calc_param, cells, research_folder, 'IN_PROGRESS']
-            cells_coordinates = self.__execute_ansys_commands(ansys, cells, body_params, calc_param)
+            # self.results[count] = [body_params, calc_param, cells, research_folder, 'IN_PROGRESS']
+            cells_coordinates = self.__execute_ansys_commands(cells, body_params, calc_param)
 
-            max_press = self.get_max_press(ansys)
+            # count stress
+            max_press = self.get_max_press()
+            if max_press == 0:
+                raise ValueError("Max stress is zero. MAPDL failed, there is a hole.")
 
-            # TODO: add all 'file.db' aka model in folder like: (1,2,3...8) and read data from them by clicking 'result'
+            # count fitness
+            size = calc_param.volume_part
+            cells_amount = calc_param.cells_ox * calc_param.cells_oy
+
+            x_0 = float(self.result_table.item(count, ResultTableHeaders.DETAIL_X0).text())
+            x_1 = float(self.result_table.item(count, ResultTableHeaders.DETAIL_X1).text())
+            y_0 = float(self.result_table.item(count, ResultTableHeaders.DETAIL_Y0).text())
+            y_1 = float(self.result_table.item(count, ResultTableHeaders.DETAIL_Y1).text())
+            working_zone = ((x_0, x_1), (y_0, y_1))
+
+            fitness = Genetic.calculate_fitness_by_params(self.zero_stress, max_press, size, cells_amount, working_zone)
+
             try:
                 # TODO: See 'TODO' in inner function
-                # self.write_all_nodes_coordinates(ansys, research_folder)
+                # self.write_all_nodes_coordinates(self.ansys_manager, research_folder)
                 pass
             except Exception as e:
                 print(e)
 
             # self.__write_cells_in_json(cells_coordinates, research_folder)
             result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Finished'))
-            result_table.setItem(count, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str(max_press)))
+            result_table.setItem(count, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str(round(max_press, 4))))
+            result_table.setItem(count, ResultTableHeaders.FITNESS, QTableWidgetItem(str(round(fitness, 4))))
             self.update_table(result_table)
 
-            self.exit_ansys_experiment(ansys)
+            self.exit_ansys_experiment()
 
-            self.results[count] = [body_params, calc_param, cells, research_folder, 'FINISHED']
+            # self.results[count] = [body_params, calc_param, cells, research_folder, 'FINISHED']
             return True
 
+        except ValueError:
+            result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Bad Cell'))
+            self.update_table(result_table)
+            # self.results[count] = [body_params, calc_param, cells, research_folder, 'FAILED']
+
         except Exception as e:
+            # TODO: Handle VMESH - "Meshing failure in volume..."
+            # TODO: Handle ??? - "Poorly shaped facets in surface mesh..."
             print(traceback.format_exc())
+
             if result_table:
                 result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Failed'))
                 self.update_table(result_table)
-            self.results[count] = [body_params, calc_param, cells, research_folder, 'FAILED']
+            # self.results[count] = [body_params, calc_param, cells, research_folder, 'FAILED']
 
-            self.exit_ansys_experiment(ansys)
+            # restart experiment in case of 'exit'
+            try:
+                self.exit_ansys_experiment()
+            except Exception:
+                # TODO: mapdl can exit and all programs crahses ://
+                self.ansys_manager = self.force_start_ansys()
+                self.clear_and_exit()
+                self.quit()
+                print("HARD EXIT")
+                quit()
+                return False
+
             return False
 
-    def research_zero_stress(self, ansys):
+    def research_zero_stress(self):
         try:
-            self.__execute_ansys_start_commands(ansys)
-            self.__run_load_schema(ansys)
-            max_press = self.get_max_press(ansys)
+            self.__execute_ansys_start_commands()
+            self.__run_load_schema()
+            max_press = self.get_max_press()
 
-            self.exit_ansys_experiment(ansys)
+            self.exit_ansys_experiment()
 
             return max_press
 
@@ -351,49 +391,66 @@ class Calculation:
             print(traceback.format_exc())
             return False
 
-    def __execute_ansys_commands(self, ansys, cells, body_params, calc_param):
-        self.__execute_ansys_start_commands(ansys)
+    def exit_ansys_experiment(self):
+        if self.ansys_manager is not None:  # or self.ansys_manager == "MAPDL exited":
+            self.ansys_manager.save()
+            self.ansys_manager.finish()
+            self.ansys_manager.clear()
 
-        drawer = self.create_drawer(ansys, cells, body_params, calc_param)
-        res = ansys.run("*GET, KMax, VOLU,, NUM, MAX")
+    def clear_and_exit(self):
+        # correct closing ANSYS manager
+        if self.ansys_manager is not None:
+            self.exit_ansys_experiment()
+            self.ansys_manager.exit()
+
+    def force_start_ansys(self):
+        root_folder = self.create_root_folder_and_move_to_it()
+        ansys_manager = None
+        while ansys_manager is None:
+            ansys_manager = self.init_ansys(root_folder)
+        return ansys_manager
+
+    def __execute_ansys_commands(self, cells, body_params, calc_param):
+        self.__execute_ansys_start_commands()
+
+        drawer = self.create_drawer(cells, body_params, calc_param)
+        res = self.ansys_manager.run("*GET, KMax, VOLU,, NUM, MAX")
         start = res.index("VALUE= ") + 7
         volume_id = res[start:]
 
         drawer.set_cells(cells)
         cells_coordinates = drawer.draw_cells_volumes()
 
-        ansys.run("VSBV,%s,ALL,,," % (volume_id))
+        self.ansys_manager.run("VSBV,%s,ALL,,," % (volume_id))
 
-        with open(file=self.load_schema_fn, mode="r", encoding="utf-8") as load_schema_commands:
-            for command in load_schema_commands:
-                if not command.isspace() and command[0] != '!':
-                    ansys.run(command)
+        self.__run_load_schema()
 
         return cells_coordinates
 
-    def __execute_ansys_start_commands(self, ansys):
-        ansys.run("/ BATCH")
-        ansys.run("WPSTYLE,, , , , , , , 0")
-        ansys.run("/ AUX15")
-        ansys.run("IOPTN, IGES, SMOOTH")
-        ansys.run("IOPTN, MERGE, YES")
-        ansys.run("IOPTN, SOLID, YES")
-        ansys.run("IOPTN, SMALL, YES")
-        ansys.run("IOPTN, GTOLER, DEFA")
-        ansys.run("IGESIN, '%s','IGS','%s' ! import" %
-                  (str(pathlib.Path(self.detail_fn).stem), str(pathlib.Path(self.detail_fn).parent.absolute())))
-        ansys.run("! VPLOT")
-        ansys.run("FINISH")
-        ansys.prep7()
-        ansys.run("NUMCMP, ALL")
-        ansys.run("/units, mpa")
-        ansys.k()
+    def __execute_ansys_start_commands(self):
+        self.ansys_manager.run("/ BATCH")
+        self.ansys_manager.run("WPSTYLE,, , , , , , , 0")
+        self.ansys_manager.run("/ AUX15")
+        self.ansys_manager.run("IOPTN, IGES, SMOOTH")
+        self.ansys_manager.run("IOPTN, MERGE, YES")
+        self.ansys_manager.run("IOPTN, SOLID, YES")
+        self.ansys_manager.run("IOPTN, SMALL, YES")
+        self.ansys_manager.run("IOPTN, GTOLER, DEFA")
+        self.ansys_manager.run("IGESIN, '%s','IGS','%s' ! import" %
+                               (str(pathlib.Path(self.detail_fn).stem),
+                                str(pathlib.Path(self.detail_fn).parent.absolute())))
+        self.ansys_manager.run("! VPLOT")
+        self.ansys_manager.run("FINISH")
+        self.ansys_manager.prep7()
+        self.ansys_manager.run("NUMCMP, ALL")
+        self.ansys_manager.run("/units, mpa")
+        self.ansys_manager.k()
 
-    def __run_load_schema(self, ansys):
+    def __run_load_schema(self):
         with open(file=self.load_schema_fn, mode="r", encoding="utf-8") as load_schema_commands:
             for command in load_schema_commands:
                 if not command.isspace() and command[0] != '!':
-                    ansys.run(command)
+                    self.ansys_manager.run(command)
 
     def __write_cells_in_json(self, cells_coordinates, research_folder: str):
         json_cells_coordinates = json.dumps(cells_coordinates)
@@ -403,12 +460,12 @@ class Calculation:
     def __is_java_installed(self) -> bool:
         return os.system("java -version") == 0
 
-    def write_all_nodes_coordinates(self, ansys, research_folder: str, file: str = "nodes.csv"):
+    def write_all_nodes_coordinates(self, research_folder: str, file: str = "nodes.csv"):
         nodes_data_frame = pd.DataFrame(columns=["node_id", "x", "y", "z"])
         start_node = 1
-        page_size = 7000  # TODO: it was '10000'
+        page_size = 10000  # TODO: it was '10000'
         end_node = start_node + page_size
-        nodes_count = self.get_count_of_nodes(ansys)
+        nodes_count = self.get_count_of_nodes()
         # ####
         # is_java_installed = self.__is_java_installed()
         is_java_installed = False  # TODO: update java version //or// boost python
@@ -417,7 +474,7 @@ class Calculation:
 
         while start_node < nodes_count:
             get_nodes_command = "NLIST,{},{}, ,XYZ,NODE,,INTERNAL".format(start_node, end_node)
-            nodes_str = ansys.run(get_nodes_command)
+            nodes_str = self.ansys_manager.run(get_nodes_command)
 
             if is_java_installed:
                 with open(file=temp_file, mode="a") as temp_file_writer:
@@ -446,24 +503,23 @@ class Calculation:
         else:
             nodes_data_frame.to_csv(research_folder + os.sep + file)
 
-    def get_count_of_nodes(self, ansys) -> int:
-        ansys.run("*GET, N_COUNT, NODE,, COUNT")
-        status = ansys.run("*STATUS, N_COUNT")
+    def get_count_of_nodes(self) -> int:
+        self.ansys_manager.run("*GET, N_COUNT, NODE,, COUNT")
+        status = self.ansys_manager.run("*STATUS, N_COUNT")
         start = status.index("\n N_COUNT")
         max_stress = re.findall('\d+\\.\d+', status[start:])[0]
 
         return int(float(max_stress))
 
-    def get_max_press(self, ansys):
-        ansys.run("/ POST1")
-        ansys.run("SET, FIRST")
-        ansys.run("NSORT, S, EQV")
-        ansys.run("*GET, STRESS_MAX, SORT,, MAX")
-        status = ansys.run("*STATUS, STRESS_MAX")
+    def get_max_press(self):
+        self.ansys_manager.run("/ POST1")
+        self.ansys_manager.run("SET, FIRST")
+        self.ansys_manager.run("NSORT, S, EQV")
+        self.ansys_manager.run("*GET, STRESS_MAX, SORT,, MAX")
+        status = self.ansys_manager.run("*STATUS, STRESS_MAX")
         start = status.index("\n STRESS_MAX")
         # TODO: Да там и до этого 3 командами выше можно вытянуть макс стресс
         max_stress = re.findall('\d+\\.\d+', status[start:])[0]
-        # TODO: ногда бывает Finished stress = 0, просто сделать из него FAILED
 
         return float(max_stress)
 
@@ -478,28 +534,34 @@ class Calculation:
             run_location=root_folder,
             interactive_plotting=True,
             override=True,
-            start_timeout=2000,
+            start_timeout=4000,
             nproc=8,
+            memory=2,
             loglevel="DEBUG",
             log_apdl="w",
             exec_file=r"D:\Programs\ANSYS Inc\v192\ansys\bin\winx64\ANSYS192.exe")
 
-    def create_drawer(self, ansys, cells, body_params, calc_params):
+    def create_drawer(self, cells, body_params, calc_params):
         if issubclass(cells.__class__, NAngleCells):
-            return NAngleCellsDrawer(body_params, calc_params.angle_num, ansys)
+            return NAngleCellsDrawer(body_params, calc_params.angle_num, self.ansys_manager)
         elif issubclass(cells.__class__, RectangleCells):
-            return RectangleCellsDrawer(body_params, cells.rows, ansys)
+            return RectangleCellsDrawer(body_params, cells.rows, self.ansys_manager)
         # elif (issubclass(cells.__class__, CircleCells)):
-        #     return Cir
+        #     return Cir #  TODO: add circle cells!
 
     def show_result(self, index):
-        if self.results[index][ResultIndexes.STATUS] == 'FINISHED':
-            path = self.results[index][ResultIndexes.RESEARCH_FOLDER] + os.sep + "file.rst"
+        status = self.result_table.item(index, ResultTableHeaders.STATUS).text()
+        # if self.results[index][ResultIndexes.STATUS] == 'FINISHED':
+        if status in ("Finished", "Parent 1", "Parent 2"):
+            # path = self.results[index][ResultIndexes.RESEARCH_FOLDER] + os.sep + "file.rst"
+            path = self.root_folder + os.sep + f"{index + 1}.rst"
             os.system("py plot_result.py \"" + path + "\"")
+        print("Visualization done!")
 
     def show_stress_chart(self, index):
-        if self.results[index][ResultIndexes.STATUS] == 'FINISHED':
-            path = self.results[index][ResultIndexes.RESEARCH_FOLDER] + os.sep + "file.rst"
+        status = self.result_table.item(index, ResultTableHeaders.STATUS).text()
+        if status in ("Finished", "Parent 1", "Parent 2"):
+            path = self.root_folder + os.sep + f"{index + 1}.rst"
             os.system("py plot_stress_chart.py \"" + path + "\"")
 
     def show_cluster_analyse(self):
