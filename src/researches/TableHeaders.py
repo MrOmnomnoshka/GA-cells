@@ -1,4 +1,4 @@
-class ResultTableHeaders:
+class TableHeaders:
     ANGLE_NUM = 0
     ROTATE_ANGLE = 1
     VOLUME_PART = 2

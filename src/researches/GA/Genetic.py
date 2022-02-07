@@ -1,5 +1,5 @@
 from src.researches.GA.Chromosome import Chromosome
-from src.researches.ResultTableHeaders import ResultTableHeaders
+from src.researches.TableHeaders import TableHeaders
 import src.researches.constants as constants
 
 
@@ -48,11 +48,16 @@ def start_new_generation(parents, zero_stress, result_table, app):
     else:
         new_generation = crossover_from_best(parent1, parent2, constants.POPULATION_SIZE)
 
-    for c in new_generation:
-        # TODO: иногда где-то тут ломается все и последнее что видим - вывод популяции
-        print(c)
+    # for c in new_generation:
+    #     print(c)
 
-    # TODO: Делать это в UI а не в ГА, может по этому и ломается
+    # TODO: Делать это в PopData а не в ГА, может по этому и ломается
+    # TODO: Вводить инфу в Попдату, а не в результ таблицу
+    # TODO: Брать инфу от туда же
+    # TODO(доп.): Сдлеать доп кнопку для выбора сохранять ли все резы, что бы можно было показывать из любого поколения
+    # TODO(доп.): Добавить скрин рядом\в\где-то в строке, что бы было видно сразу, не заходя в "Результат"
+    # TODO(доп.): Создать перменнуию или типо того для сигналов и передевать их все вместе а-ля "def fn(self, signals):"
+
     # Clear the table
     app.clear_result_table()
     for i in range(len(new_generation)):
@@ -77,18 +82,18 @@ def get_old_population(parents, result_table):
 def copy_agent_from_table(result_table, index, agent):
     # TODO: REMAKE IT IN UI.py
     # read table
-    x_start = float(result_table.item(index, ResultTableHeaders.DETAIL_X0).text())
-    x_end = float(result_table.item(index, ResultTableHeaders.DETAIL_X1).text())
-    y_start = float(result_table.item(index, ResultTableHeaders.DETAIL_Y0).text())
-    y_end = float(result_table.item(index, ResultTableHeaders.DETAIL_Y1).text())
+    x_start = float(result_table.item(index, TableHeaders.DETAIL_X0).text())
+    x_end = float(result_table.item(index, TableHeaders.DETAIL_X1).text())
+    y_start = float(result_table.item(index, TableHeaders.DETAIL_Y0).text())
+    y_end = float(result_table.item(index, TableHeaders.DETAIL_Y1).text())
 
     # add data from table to agent
     agent.working_zone = ((x_start, x_end), (y_start, y_end))
-    agent.angles = int(result_table.item(index, ResultTableHeaders.ANGLE_NUM).text())
-    agent.rotation = int(result_table.item(index, ResultTableHeaders.ROTATE_ANGLE).text())
-    agent.size = int(result_table.item(index, ResultTableHeaders.VOLUME_PART).text())
-    agent.x_amount = int(result_table.item(index, ResultTableHeaders.CELLS_OX).text())
-    agent.y_amount = int(result_table.item(index, ResultTableHeaders.CELLS_OY).text())
+    agent.angles = int(result_table.item(index, TableHeaders.ANGLE_NUM).text())
+    agent.rotation = int(result_table.item(index, TableHeaders.ROTATE_ANGLE).text())
+    agent.size = int(result_table.item(index, TableHeaders.VOLUME_PART).text())
+    agent.x_amount = int(result_table.item(index, TableHeaders.CELLS_OX).text())
+    agent.y_amount = int(result_table.item(index, TableHeaders.CELLS_OY).text())
 
 
 # def calculate_fitness(agent, zero_stress):

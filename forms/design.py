@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(1235, 632)
+        MainWindow.resize(1240, 632)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayout_5 = QtWidgets.QVBoxLayout(self.centralwidget)
@@ -195,7 +195,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "PyAnsys Celluar Structure v2.0"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "PyAnsys Celluar Structure v2.1"))
         item = self.result_table.horizontalHeaderItem(0)
         item.setText(_translate("MainWindow", "N"))
         item = self.result_table.horizontalHeaderItem(1)

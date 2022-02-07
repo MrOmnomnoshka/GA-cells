@@ -6,19 +6,20 @@ import shutil
 import ansys.mapdl
 import re
 import traceback
-# from datetime import datetime
-from time import sleep, strftime, localtime
-from ansys.mapdl.core import launch_mapdl
-import pandas as pd
-from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QTableWidgetItem
 
-from src.researches.ResultTableHeaders import ResultTableHeaders
+# from datetime import datetime
+# from time import sleep, strftime, localtime
+import pandas as pd
+from ansys.mapdl.core import launch_mapdl
+from PyQt5 import QtWidgets, QtCore
+
+import src.researches.constants as constants
+from src.researches.TableHeaders import TableHeaders
 from src.researches.BodyParams import BodyParameters
 from src.researches.Cells import NAngleCells, CircleCells, RectangleCells
 from src.researches.Drawers import NAngleCellsDrawer, RectangleCellsDrawer
 from src.researches.GA import Genetic
-import src.researches.constants as constants
+from src.researches.ThreadsManager import Worker
 
 
 class CalculationParams:
@@ -30,105 +31,119 @@ class CalculationParams:
         self.cells_oy = cells_oy
 
 
-class CalculationContext:
-    def __init__(self,
-                 rotate_angle_start: int, rotate_angle_end: int, rotate_angle_step: int,
-                 angle_num_start: int, angle_num_end: int, angle_num_step: int,
-                 volume_part_start: int, volume_part_end: int, volume_part_step: int,
-                 cells_ox_start: int, cells_ox_end: int, cells_ox_step: int,
-                 cells_oy_start: int, cells_oy_end: int, cells_oy_step: int):
-        self.rotate_angle_start = min(rotate_angle_start, rotate_angle_end)
-        self.rotate_angle_end = max(rotate_angle_start, rotate_angle_end)
-        self.rotate_angle_step = rotate_angle_step
-        self.angle_num_start = min(angle_num_start, angle_num_end)
-        self.angle_num_end = max(angle_num_start, angle_num_end)
-        self.angle_num_step = angle_num_step
-        self.volume_part_start = min(volume_part_start, volume_part_end)
-        self.volume_part_end = max(volume_part_start, volume_part_end)
-        self.volume_part_step = volume_part_step
-        self.cells_ox_start = min(cells_ox_start, cells_ox_end)
-        self.cells_ox_end = max(cells_ox_start, cells_ox_end)
-        self.cells_ox_step = cells_ox_step
-        self.cells_oy_start = min(cells_oy_start, cells_oy_end)
-        self.cells_oy_end = max(cells_oy_start, cells_oy_end)
-        self.cells_oy_step = cells_oy_step
-
-
-class Calculation(QtCore.QThread):
+# class Calculation(QtCore.QThread):
+class Calculation:
     detail_fn = str
     load_schema_fn = str
     root_folder = str
     zero_stress = int
-    generation_counter = 0
     min_stress_for_all_time = list()
-
+    pop_data = None  # TODO: all generations data in 'pop_data'
     ansys_manager = None
     result_table = None
-    app = None
+    threadpool = QtCore.QThreadPool()  # for multithreading
 
-    # Потоковая задача
-    current_stress_signal = QtCore.pyqtSignal(str)  # Объявляем сигнал, с аргументом(int)
-    zero_stress_signal = QtCore.pyqtSignal(str)  # Объявляем сигнал, с аргументом(int)
-    threadFinish = QtCore.pyqtSignal()
-    current_task = None
+    def __init__(self, app):
+        self.app = app
 
-    def __init__(self):
-        super().__init__()
-        # self.results = {}  # TODO: all generations data in 1 place
+    def connect_worker_to_signals(self, worker):
+        worker.signals.zero_stress_signal.connect(self.app.change_zero_stress_label)
+        worker.signals.current_stress_signal.connect(self.app.change_current_stress_label)
+        worker.signals.increment_cb.connect(self.app.increment_cb_generation)
+        worker.signals.change_table_signal.connect(self.app.change_table_item)
 
-    def run(self, *args, **kwargs):
+    def research_UI(self):
+        worker = Worker(self.research)
+        self.connect_worker_to_signals(worker)
+
+        self.threadpool.start(worker)
+
+    def research(self, **kwargs):
+        # Stop or pause calculating
+        self.app.is_running = not self.app.is_running
+        self.app.button_play_pause.setDefault(self.app.is_running)  # TODO(?): make a separate thread
+
+        if self.ansys_manager is None:
+            self.set_up_research(kwargs.get("zero_stress_callback"))
+
+        self.calculate_infinity(**kwargs)
+
+    def next_generation_research_UI(self):
+        worker = Worker(self.next_generation_research)
+        self.connect_worker_to_signals(worker)
+        self.threadpool.start(worker)
+
+    def next_generation_research(self,  **kwargs):
+        self.app.button_play_pause.setEnabled(False)
+
+        if self.ansys_manager is None:
+            self.set_up_research(kwargs.get("zero_stress_callback"))
+        self.calculate_next_iteration(**kwargs)
+
+        self.app.button_play_pause.setEnabled(True)
+
+    def set_up_research(self, zero_stress_callback):
+        # Prepare arguments for methods in class
+        self.import_detail_and_load_schema_files(self.app.input_detail_file.text(),
+                                                 self.app.input_load_schema_file.text())
+        self.result_table = self.app.result_table
+
         # Start ansys
         if self.ansys_manager is None:
             self.ansys_manager = self.force_start_ansys()
 
-        # Start any experiment
-        if self.current_task == 0:
-            self.calculate_zero_stress()
-        elif self.current_task == 1:
-            self.calculate_next_iteration(self.result_table, self.app)
-        elif self.current_task == 2:
-            self.calculate_infinity(self.result_table, self.app)
-
-        # Currect exit thread
-        # self.threadFinish.emit()
-        self.quit()
+        # Count zero_stress
+        zero_stress_callback.emit(" *****")
+        self.calculate_zero_stress()
+        zero_stress_callback.emit(str(self.zero_stress))
 
     def calculate_zero_stress(self):
-        self.zero_stress_signal.emit(" *****")
-        # TODO: uncomment
-        # max_stress = self.research_zero_stress(self.ansys_manager)
+        # uncomment in release version
+        # max_stress = self.research_zero_stress()
         max_stress = 1061.04292
 
         if max_stress:
-            self.zero_stress_signal.emit(str(max_stress))
-            self.current_stress_signal.emit(str(max_stress))
             self.zero_stress = max_stress
 
-    def calculate_next_iteration(self, result_table, app):
-        if self.generation_counter >= constants.GENERATION_LIMIT:
-            app.is_running = False
-            return 0
+    def research_zero_stress(self):
+        try:
+            self.__execute_ansys_start_commands()
+            self.__run_load_schema()
+            max_press = self.get_max_press()
 
-        if self.generation_counter > 0:  # Not the first generation
-            # Create new generation
-            self.create_new_generation(result_table, app)
+            self.exit_ansys_experiment()
+
+            return max_press
+
+        except Exception as e:
+            print(traceback.format_exc())
+            return False
+
+    def calculate_next_iteration(self, **kwargs):
+        if self.pop_data.generation_counter >= constants.GENERATION_LIMIT:
+            self.app.is_running = False
+            return
+
+        # Crossover parents
+        if self.pop_data.generation_counter > 0:  # Not the first generation
+            self.crossover_parents(self.result_table)
 
         # Count current generation
-        self.calculate_current_research(result_table, app)
+        self.calculate_current_research(**kwargs)
 
-    def calculate_infinity(self, result_table, app):
+    def calculate_infinity(self, **kwargs):
         # An infinite cycle
-        while app.is_running:  # Continue the experiment
-            self.calculate_next_iteration(result_table, app)
+        while self.app.is_running:  # Continue the experiment
+            self.calculate_next_iteration(**kwargs)
             QtCore.QThread.msleep(250)
         else:
-            sleep(1)  # not overload CPU on pause
+            QtCore.QThread.msleep(1000)  # not overload CPU on pause
 
-    def create_new_generation(self, result_table, app):
+    def crossover_parents(self, result_table):
         finished = self.get_all_finished_id_and_stress(result_table)
 
         if len(finished) >= 2:
-            Genetic.start_new_generation(finished, self.zero_stress, result_table, app)
+            Genetic.start_new_generation(finished, self.zero_stress, result_table, self.app)
         else:
             # TODO: ??create and recalculate new generation??
             print("Bad News: Not enough parents.")
@@ -149,10 +164,10 @@ class Calculation(QtCore.QThread):
         #
         #     a = enumerate(fitness)
         #     for i, j in list(a):
-        #         result_table.setItem(i, ResultTableHeaders.FITNESS, QTableWidgetItem(str(round(j, 3))))
+        #         result_table.setItem(i, TableHeaders.FITNESS, QTableWidgetItem(str(round(j, 3))))
         self.update_table(result_table)
 
-    def calculate_current_research(self, result_table, app):
+    def calculate_current_research(self, **kwargs):
         # # recoding to a Exel file
         # file_path = self.root_folder + os.sep + "researches.csv"
         # with open(file_path, mode="w", newline="") as researches_csv:
@@ -160,45 +175,51 @@ class Calculation(QtCore.QThread):
         #     research_result_data = ["research_id", "angle_num", "rotate_angle", "vol_part", "cells_ox", "cells_oy",
         #                             "research_Status"]
         #     writer.writerow(research_result_data)
-        range_start = 2 if constants.SAVE_PARENTS and self.generation_counter > 0 else 0
+        range_start = 2 if constants.SAVE_PARENTS and self.pop_data.generation_counter > 0 else 0
 
-        if self.generation_counter > 0:
-            app.increment_cb_generation()
+        if self.pop_data.generation_counter > 0:
+            kwargs.get("increment_cb_callback").emit()
 
-        # Backup every 5 generation in case of some breaks
-        if (self.generation_counter + 1) % 2 == 0:
+            # Increment generation
+        self.pop_data.generation_counter += 1
+
+        # Backup every N generation in case of some breaks
+        if (self.pop_data.generation_counter + 1) % constants.SAVE_TO_CSV_EVERY_N == 0:
             self.app.save_csv("last_research.csv")
 
-        self.generation_counter += 1
         for row_index in range(range_start, constants.POPULATION_SIZE):
-            param = self.__build_calculate_params(result_table, row_index)
-            body_params = self.__build_body_params(result_table, row_index)
+            param = self.__build_calculate_params(self.result_table, row_index)
+            body_params = self.__build_body_params(self.result_table, row_index)
             cells = self.__calculate_cells(body_params, param)
 
-            result_table.setItem(row_index, ResultTableHeaders.STATUS, QTableWidgetItem('Solving'))
-            self.update_table(result_table)
+            kwargs.get("table_callback").emit(row_index, TableHeaders.STATUS, "Solving")
 
             try:
                 self.researchFromDetailModel(body_params, param, cells, self.root_folder,
-                                             result_table, row_index)
+                                             self.result_table, row_index, kwargs.get("table_callback"))
                 if constants.SAVE_TEMP_FILES:
                     self.save_db_and_rst_files(row_index)
 
             except Exception as e:
-                result_table.setItem(row_index, ResultTableHeaders.STATUS, QTableWidgetItem('ERROR!'))
-                self.update_table(result_table)
-                # app.force_start_ansys() # TODO: ???
+                kwargs.get("table_callback").emit(row_index, TableHeaders.STATUS, "ERROR!")
+                # self.app.force_start_ansys() # TODO: restart ansys correctly and try to continue
                 print(e)
 
             # self.__write_row_in_csv_results(row_index, param)
             # count += 1
 
         # Change stress label to current min stress
-        all_stress = [i[1] for i in self.get_all_finished_id_and_stress(result_table)]
+        all_stress = [i[1] for i in self.get_all_finished_id_and_stress(self.result_table)]
         min_stress = min(all_stress)
         self.min_stress_for_all_time.append(min_stress)
-        self.current_stress_signal.emit(str(min_stress))
-        app.add_generation_stress_in_plot(self.min_stress_for_all_time)
+
+        # self.current_stress_signal.emit(str(min_stress))
+        kwargs.get("curr_stress_callback").emit(str(min_stress))
+
+        self.app.add_generation_stress_in_plot(self.min_stress_for_all_time)
+
+        # Save table state in class
+        self.pop_data.save_result_table_state()
 
     def save_db_and_rst_files(self, row_index):
         # Copy '.db' files
@@ -215,9 +236,9 @@ class Calculation(QtCore.QThread):
         # TODO: (maybe) REMAKE IT IN UI.py
         finished = []
         for i in range(constants.POPULATION_SIZE):
-            status = result_table.item(i, ResultTableHeaders.STATUS).text()
+            status = result_table.item(i, TableHeaders.STATUS).text()
             if status == "Finished" or status == "Parent 1" or status == "Parent 2":
-                stress = float(result_table.item(i, ResultTableHeaders.MAX_PRESS).text())
+                stress = float(result_table.item(i, TableHeaders.MAX_PRESS).text())
                 finished.append((i, stress))
         return finished
 
@@ -268,20 +289,20 @@ class Calculation(QtCore.QThread):
 
     def __build_calculate_params(self, result_table: QtWidgets.QTableWidget, row_index: int) -> CalculationParams:
         return CalculationParams(
-            int(result_table.item(row_index, ResultTableHeaders.ROTATE_ANGLE).text()),
-            int(result_table.item(row_index, ResultTableHeaders.ANGLE_NUM).text()),
-            int(result_table.item(row_index, ResultTableHeaders.VOLUME_PART).text()),
-            int(result_table.item(row_index, ResultTableHeaders.CELLS_OX).text()),
-            int(result_table.item(row_index, ResultTableHeaders.CELLS_OY).text()))
+            int(result_table.item(row_index, TableHeaders.ROTATE_ANGLE).text()),
+            int(result_table.item(row_index, TableHeaders.ANGLE_NUM).text()),
+            int(result_table.item(row_index, TableHeaders.VOLUME_PART).text()),
+            int(result_table.item(row_index, TableHeaders.CELLS_OX).text()),
+            int(result_table.item(row_index, TableHeaders.CELLS_OY).text()))
 
     def __build_body_params(self, result_table: QtWidgets.QTableWidget, row_index: int) -> BodyParameters:
         return BodyParameters(
-            float(result_table.item(row_index, ResultTableHeaders.DETAIL_X0).text()),
-            float(result_table.item(row_index, ResultTableHeaders.DETAIL_X1).text()),
-            float(result_table.item(row_index, ResultTableHeaders.DETAIL_Y0).text()),
-            float(result_table.item(row_index, ResultTableHeaders.DETAIL_Y1).text()),
-            float(result_table.item(row_index, ResultTableHeaders.DETAIL_Z0).text()),
-            float(result_table.item(row_index, ResultTableHeaders.DETAIL_Z1).text()))
+            float(result_table.item(row_index, TableHeaders.DETAIL_X0).text()),
+            float(result_table.item(row_index, TableHeaders.DETAIL_X1).text()),
+            float(result_table.item(row_index, TableHeaders.DETAIL_Y0).text()),
+            float(result_table.item(row_index, TableHeaders.DETAIL_Y1).text()),
+            float(result_table.item(row_index, TableHeaders.DETAIL_Z0).text()),
+            float(result_table.item(row_index, TableHeaders.DETAIL_Z1).text()))
 
     def __build_body_params_ga(self):
         # TODO: calc body dynamically for different models
@@ -302,15 +323,13 @@ class Calculation(QtCore.QThread):
     #     return list
 
     def update_table(self, table):
-        pass
         table.hide()
         table.update()
         # table.resizeColumnsToContents()
         table.show()
 
-    def researchFromDetailModel(self, body_params, calc_param, cells, research_folder, result_table, count):
+    def researchFromDetailModel(self, body_params, calc_param, cells, research_folder, result_table, count, table_callback):
         try:
-            # self.results[count] = [body_params, calc_param, cells, research_folder, 'IN_PROGRESS']
             cells_coordinates = self.__execute_ansys_commands(cells, body_params, calc_param)
 
             # count stress
@@ -322,10 +341,10 @@ class Calculation(QtCore.QThread):
             size = calc_param.volume_part
             cells_amount = calc_param.cells_ox * calc_param.cells_oy
 
-            x_0 = float(self.result_table.item(count, ResultTableHeaders.DETAIL_X0).text())
-            x_1 = float(self.result_table.item(count, ResultTableHeaders.DETAIL_X1).text())
-            y_0 = float(self.result_table.item(count, ResultTableHeaders.DETAIL_Y0).text())
-            y_1 = float(self.result_table.item(count, ResultTableHeaders.DETAIL_Y1).text())
+            x_0 = float(self.result_table.item(count, TableHeaders.DETAIL_X0).text())
+            x_1 = float(self.result_table.item(count, TableHeaders.DETAIL_X1).text())
+            y_0 = float(self.result_table.item(count, TableHeaders.DETAIL_Y0).text())
+            y_1 = float(self.result_table.item(count, TableHeaders.DETAIL_Y1).text())
             working_zone = ((x_0, x_1), (y_0, y_1))
 
             fitness = Genetic.calculate_fitness_by_params(self.zero_stress, max_press, size, cells_amount, working_zone)
@@ -338,10 +357,9 @@ class Calculation(QtCore.QThread):
                 print(e)
 
             # self.__write_cells_in_json(cells_coordinates, research_folder)
-            result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Finished'))
-            result_table.setItem(count, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str(round(max_press, 4))))
-            result_table.setItem(count, ResultTableHeaders.FITNESS, QTableWidgetItem(str(round(fitness, 4))))
-            self.update_table(result_table)
+            table_callback.emit(count, TableHeaders.STATUS, "Finished")
+            table_callback.emit(count, TableHeaders.MAX_PRESS, str(round(max_press, 4)))
+            table_callback.emit(count, TableHeaders.FITNESS, str(round(fitness, 4)))
 
             self.exit_ansys_experiment()
 
@@ -349,9 +367,7 @@ class Calculation(QtCore.QThread):
             return True
 
         except ValueError:
-            result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Bad Cell'))
-            self.update_table(result_table)
-            # self.results[count] = [body_params, calc_param, cells, research_folder, 'FAILED']
+            table_callback.emit(count, TableHeaders.STATUS, "Bad Cell")
 
         except Exception as e:
             # TODO: Handle VMESH - "Meshing failure in volume..."
@@ -359,9 +375,7 @@ class Calculation(QtCore.QThread):
             print(traceback.format_exc())
 
             if result_table:
-                result_table.setItem(count, ResultTableHeaders.STATUS, QTableWidgetItem('Failed'))
-                self.update_table(result_table)
-            # self.results[count] = [body_params, calc_param, cells, research_folder, 'FAILED']
+                table_callback.emit(count, TableHeaders.STATUS, "Failed")
 
             # restart experiment in case of 'exit'
             try:
@@ -370,26 +384,38 @@ class Calculation(QtCore.QThread):
                 # TODO: mapdl can exit and all programs crahses ://
                 self.ansys_manager = self.force_start_ansys()
                 self.clear_and_exit()
-                self.quit()
                 print("HARD EXIT")
                 quit()
                 return False
 
             return False
 
-    def research_zero_stress(self):
-        try:
-            self.__execute_ansys_start_commands()
-            self.__run_load_schema()
-            max_press = self.get_max_press()
+    def check_for_errors_basic(self):
+        if self.app.result_table.rowCount() <= 0:
+            return "Research table is empty."
 
-            self.exit_ansys_experiment()
+    def check_for_errors_next(self):
+        if self.threadpool.activeThreadCount() > 0:  # Exit if research is not complete
+            return "Research is already in progress."
+        return self.check_for_errors_basic()
 
-            return max_press
+    # #######################################################
+    def progress_fn(self, n):
+        print("%d%% done" % n)
 
-        except Exception as e:
-            print(traceback.format_exc())
-            return False
+    def execute_this_fn(self, progress_callback):
+        for n in range(0, 5):
+            # time.sleep(1)
+            progress_callback.emit(n * 100 / 4)
+
+        return "Done."
+
+    def print_output(self, s):
+        print(s)
+
+    def thread_complete(self):
+        print("THREAD COMPLETE!")
+    # #######################################################
 
     def exit_ansys_experiment(self):
         if self.ansys_manager is not None:  # or self.ansys_manager == "MAPDL exited":
@@ -402,6 +428,7 @@ class Calculation(QtCore.QThread):
         if self.ansys_manager is not None:
             self.exit_ansys_experiment()
             self.ansys_manager.exit()
+            self.app.is_running = False
 
     def force_start_ansys(self):
         root_folder = self.create_root_folder_and_move_to_it()
@@ -550,7 +577,7 @@ class Calculation(QtCore.QThread):
         #     return Cir #  TODO: add circle cells!
 
     def show_result(self, index):
-        status = self.result_table.item(index, ResultTableHeaders.STATUS).text()
+        status = self.result_table.item(index, TableHeaders.STATUS).text()
         # if self.results[index][ResultIndexes.STATUS] == 'FINISHED':
         if status in ("Finished", "Parent 1", "Parent 2"):
             # path = self.results[index][ResultIndexes.RESEARCH_FOLDER] + os.sep + "file.rst"
@@ -559,7 +586,7 @@ class Calculation(QtCore.QThread):
         print("Visualization done!")
 
     def show_stress_chart(self, index):
-        status = self.result_table.item(index, ResultTableHeaders.STATUS).text()
+        status = self.result_table.item(index, TableHeaders.STATUS).text()
         if status in ("Finished", "Parent 1", "Parent 2"):
             path = self.root_folder + os.sep + f"{index + 1}.rst"
             os.system("py plot_stress_chart.py \"" + path + "\"")

@@ -6,15 +6,15 @@ class Chromosome:
     mut_percentage = 5
 
     # TODO: auto-make x, y, z for BodySize
-    x_min, x_max = 10, 240
-    y_min, y_max = 10, 240
+    x_min, x_max = 0, 250
+    y_min, y_max = 0, 250
     z_min, z_max = 0, 250
 
-    an_min, an_max = 3, 8  # 8
+    an_min, an_max = 3, 5  # 3-8
     rt_min, rt_max = 0, 360
     sz_min, sz_max = 1, 99
-    xa_min, xa_max = 1, 10  # 15
-    ya_min, ya_max = 1, 10  # 15
+    xa_min, xa_max = 1, 2  # 1-15
+    ya_min, ya_max = 1, 2  # 1-15
 
     def __init__(self, working_zone=tuple, angles=int, rotation=int, size=int, x_amount=int, y_amount=int, depth=False):
         self.working_zone = working_zone

@@ -1,71 +1,72 @@
 import _thread as thread
 import sys
-# import random
 
-from PyQt5 import QtCore, QtGui, QtWidgets
-
-# from PyQt5.QtCore import QMutex, QObject, QThread, pyqtSignal
-
-from PyQt5.QtWidgets import QTableWidgetItem, QMessageBox
+from PyQt5.QtWidgets import QTableWidgetItem, QMessageBox, QDesktopWidget
+from PyQt5 import QtGui, QtWidgets
 import pyqtgraph as pg
 
-# from src.researches.BodyParams import BodyParameters
-from src.researches.Calculation import *
-from src.researches.ResultTableHeaders import ResultTableHeaders
+from src.researches.BodyParams import BodyParameters
+from src.researches.Calculation import Calculation
+from src.researches.PopulationData import PopulationData
+from src.researches.TableHeaders import TableHeaders
 from src.researches.util import table_utils
-from src.researches.GA.Chromosome import Chromosome
 from forms import design  # Это наш конвертированный файл дизайна
 import src.researches.constants as constants
 
 
 class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
+    is_running = False
+    table_changed_by_program = False
 
     def __init__(self):
         # Это здесь нужно для доступа к переменным, методам и т.д. в файле design.py
         super().__init__()
         self.setupUi(self)  # Это нужно для инициализации нашего дизайна
+        self.set_window_position()  # Выставить окно в центре сверху
 
-        # self.mutex = QMutex()  # lock class that allows to manage mutual exclusion
-        self.calculation = Calculation()
-        self.is_running = False
+        self.calculation = Calculation(self)
+        self.population_data = self.calculation.pop_data = PopulationData(self.result_table)
 
         self.connect_all_buttons()
-        self.set_up_threads()
+        self.set_up_plot_and_table()
+
+    def set_window_position(self):
+        ag = QDesktopWidget().availableGeometry()
+        widget = self.geometry()
+        x = ag.width() // 2 - widget.width() // 2
+        self.move(x, 0)  # move window to TOP
 
     def connect_all_buttons(self):
         self.button_detail_file.clicked.connect(self.pick_model_file)
         self.button_load_schema_file.clicked.connect(self.pick_schema_load_file)
         self.button_create_researches.clicked.connect(self.fill_researches_list)
-        self.button_play_pause.clicked.connect(self.research)
-        self.button_next.clicked.connect(self.next_generation_research)
-        # self.button_stop.clicked.connect()
+        self.button_play_pause.clicked.connect(self.button_play_pause_pressed)
+        self.button_next.clicked.connect(self.button_next_pressed)
+        self.button_stop.clicked.connect(self.test_function)  # TODO: add stop action or remove the button
         self.button_result.clicked.connect(self.show_result)
         self.button_stress.clicked.connect(self.show_stress_chart)
         self.button_export.clicked.connect(self.save_csv)
         self.button_clusterization.clicked.connect(self.analyze_researches)
         self.button_import_researches.clicked.connect(self.load_csv)
 
-        self.set_up_plot()
+        self.cb_generation.currentIndexChanged.connect(self.load_table, self.cb_generation.currentIndex())
 
-    def set_up_plot(self):
+    def test_function(self):
+        # self.population_data.save_result_table_state()
+        print(":)")
+
+    def set_up_plot_and_table(self):
         # Customize plot widget
         app_color = self.palette().color(QtGui.QPalette.Window)
         self.graph_widget.setBackground(app_color)
         self.graph_widget.showGrid(x=True, y=True)
         # TODO: что бы было видно первую точку, сделать точки жирными и ставить их на график
-        # plot(x, y, color='green', linestyle='dashed', linewidth=3,
-        #       marker='o', markerfacecolor='blue', markersize=12)
+        # plot(x, y, color='green', linestyle='dashed', linewidth=3, marker='o', markerfacecolor='blue', markersize=12)
         self.plot_widget = self.graph_widget.plotItem.plot(pen=pg.mkPen("b", width=2, marker="o", markersize=25))
 
-    def set_up_threads(self):
-        # --- Подключаем сигналы к слоту, слот будет вызываться с параметрами сигнала в нужное время.
-        self.calculation.threadFinish.connect(self.threadFinished)
-        self.calculation.current_stress_signal.connect(self.change_current_stress_label)
-        self.calculation.zero_stress_signal.connect(self.change_zero_stress_label)
-
-    def increment_cb_generation(self):
-        self.cb_generation.addItem("Поколение: " + str(self.cb_generation.count()))
-        self.cb_generation.setCurrentIndex(self.cb_generation.count() - 1)
+        # TABLE
+        # self.result_table.setRowCount(constants.POPULATION_SIZE)
+        self.result_table.resizeColumnsToContents()  # TODO: resize it in 'untiled.ui'
 
     def add_generation_stress_in_plot(self, data):
         self.plot_widget.setData(data)
@@ -74,6 +75,7 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
     def closeEvent(self, event: QtGui.QCloseEvent):
         if self.calculation is not None:
             self.calculation.clear_and_exit()
+            # TODO: close ansys and all threads correct and fast
         # print("Event: " + str(event))
 
     def load_csv(self):
@@ -81,33 +83,40 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         thread.start_new_thread(table_utils.import_research_list_from_csv, (file_name[0], self.result_table))
 
     def save_csv(self, default=None):
-        # TODO: BUG: crashes after save and count next gen
         if default:
             file_name = default
         else:
+            # TODO: BUG: crashes after save and count next gen
             file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Open file', r'..\..', '(*.csv)')
 
         if file_name:
             table_utils.save_csv_to_file(file_name, self.result_table)
 
+    def are_you_sure_msg(self):
+        qm = QMessageBox()
+        reply = qm.information(self, "Reset all data", "This will reset ALL the experiments. Are you sure?",
+                               qm.Yes | qm.No, qm.No)
+
+        return reply == qm.Yes
+
+    def load_table(self, index):
+        if self.table_changed_by_program:
+            self.table_changed_by_program = False
+        else:
+            self.clear_result_table()
+            self.population_data.change_result_table_by_generation(index)
+
     def analyze_researches(self):
         rows = self.result_table.rowCount()
         processed_researches = 0
         for i in range(rows):
-            if self.result_table.item(i, ResultTableHeaders.STATUS) \
-                    and self.result_table.item(i, ResultTableHeaders.STATUS).text() == "Finished":
+            if self.result_table.item(i, TableHeaders.STATUS) \
+                    and self.result_table.item(i, TableHeaders.STATUS).text() == "Finished":
                 processed_researches += 1
 
         proceed = False
         if processed_researches == 0:
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Warning)
-
-            msg.setText("Ни один эксперимент не проведен.")
-            msg.setWindowTitle("Warning")
-            msg.setStandardButtons(QMessageBox.Ok)
-
-            msg.exec_()
+            self.show_error("No experiment has been researched.")
         elif processed_researches < rows:
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Warning)
@@ -127,13 +136,9 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
 
     def __get_body_params_ga(self, agent):
         return BodyParameters(
-            float(min(agent.working_zone[0][0], agent.working_zone[0][1])),
-            float(max(agent.working_zone[0][0], agent.working_zone[0][1])),
-            float(min(agent.working_zone[1][0], agent.working_zone[1][1])),
-            float(max(agent.working_zone[1][0], agent.working_zone[1][1])),
-            # Z values:
-            float(0),
-            float(250))
+            float(agent.working_zone[0][0]), float(agent.working_zone[0][1]),
+            float(agent.working_zone[1][0]), float(agent.working_zone[1][1]),
+            float(0), float(250))  # for now Z values is always 250
 
     def pick_model_file(self):
         # открыть диалог выбора файла в текущей папке
@@ -149,49 +154,28 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         if file_name:  # не продолжать выполнение, если пользователь не выбрал файл
             self.input_load_schema_file.setText(file_name)
 
-    def set_up_research(self):
-        self.calculation.import_detail_and_load_schema_files(self.input_detail_file.text(),
-                                                             self.input_load_schema_file.text())
+    def button_play_pause_pressed(self):
+        error_text = self.calculation.check_for_errors_basic()
+        if error_text:
+            self.show_error(error_text)
+        else:  # No errors
+            self.calculation.research_UI()
 
-        # Prepare arguments for methods in Calculation class
-        self.calculation.result_table = self.result_table
-        self.calculation.app = self
+    def button_next_pressed(self):
+        error_text = self.calculation.check_for_errors_next()
+        if error_text:
+            self.show_error(error_text)
+        else:  # No errors
+            self.calculation.next_generation_research_UI()
 
-        # Count zero_stress
-        self.calculation.current_task = 0
-        self.calculation.start()
+    def show_error(self, text):
+        qm = QMessageBox()
+        qm.warning(self, 'Warning', text, qm.Ok, qm.Ok)
 
-        # Wait until it finishes
-        while self.calculation.isRunning():
-            QtCore.QThread.msleep(250)
-
-        # Start the experiment
-        if self.is_running:
-            # calculate infinity
-            self.calculation.current_task = 2
-            self.calculation.start()
-        else:
-            # calculate next iteration
-            self.calculation.current_task = 1
-            self.calculation.start()
-
-    def next_generation_research(self):
-        if self.calculation.ansys_manager is None:
-            thread.start_new_thread(self.set_up_research, ())
-        else:
-            # calculate next iteration
-            self.calculation.current_task = 1
-            self.calculation.start()  # TODO: Бесконечно генерятся потоки, мб есть на них ограничение и все полетит
-            # thread.start_new_thread(self.calculation.calculate_next_iteration, (self.result_table, self))
-
-    def on_threadSignal(self, value):
-        # функция вывода чисел
-        """ Визуализация потоковых данных-WorkThread.  """
-        self.label_current_stress.setNum(value)
-
-    def threadFinished(self):
-        self.label_current_stress.setText("{} - Финиш!".format(self.label_current_stress.text()))
-        # print("FINISHED!")
+    def increment_cb_generation(self):
+        self.table_changed_by_program = True
+        self.cb_generation.addItem("Поколение: " + str(self.cb_generation.count()))
+        self.cb_generation.setCurrentIndex(self.cb_generation.count() - 1)
 
     def change_current_stress_label(self, text):
         self.label_current_stress.setText("Нагрузка текущая: " + text)
@@ -199,30 +183,31 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
     def change_zero_stress_label(self, text):
         self.label_zero_stress.setText("Нагрузка нулевая: " + text)
 
-    def research(self):
-        # Stop or pause calculating
-        self.is_running = not self.is_running
-        self.button_play_pause.setDefault(self.is_running)
-
-        if self.calculation.ansys_manager is None:
-            # TODO: thread? or PyQt Thread?! xD
-            thread.start_new_thread(self.set_up_research, ())
-        else:
-            # calculate infinity
-            if self.is_running:
-                self.calculation.current_task = 2
-                self.calculation.start()
-            # thread.start_new_thread(self.calculation.calculate_infinity, (self.result_table, self))
-
-        # !!NOTE!!: the line below is for profiler ONLY
-        # self.set_up_research()
+    def change_table_item(self, row, column, text):
+        self.result_table.setItem(row, column, QTableWidgetItem(text))
 
     def fill_researches_list(self):
+        # Not the first generation
+        if self.population_data.generation_counter != 0:
+            if self.are_you_sure_msg():
+                self.clear_ui()  # clear old data
+                # TODO: clear\save\remove calc_data, pop_data
+            else:
+                return None  # Exit if pressed 'No'
+
+        self.population_data.create_first_population()
+
         for i in range(constants.POPULATION_SIZE):
-            agent = Chromosome()
-            agent.generate_all_params()
-            self.count_body_params_and_add_in_table(agent, i)
-            del agent
+            self.count_body_params_and_add_in_table(self.population_data.population[0][i], i)
+
+    def clear_ui(self):
+        self.change_current_stress_label("")
+        self.change_zero_stress_label("")
+
+        self.cb_generation.clear()  # TODO: bug with vertical scroll bar appears (update/repaint - does't work)
+        self.increment_cb_generation()
+
+        self.plot_widget.clear()
 
     def count_body_params_and_add_in_table(self, agent, i):
         body_params = self.__get_body_params_ga(agent)
@@ -231,83 +216,72 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         self.__add_ga_param_in_result_table(agent, body_params, i)
 
     def clear_result_table(self):
-        self.result_table.setRowCount(1)
-
-        # TODO: redo it in designer.ui
-        self.result_table.setItem(0, ResultTableHeaders.ANGLE_NUM, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.ROTATE_ANGLE, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.VOLUME_PART, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.CELLS_OX, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.CELLS_OY, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.DETAIL_X0, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.DETAIL_X1, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.DETAIL_Y0, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.DETAIL_Y1, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.DETAIL_Z0, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.DETAIL_Z1, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.STATUS, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str()))
-        self.result_table.setItem(0, ResultTableHeaders.FITNESS, QTableWidgetItem(str()))
+        for row in range(self.result_table.rowCount()):
+            for column in range(self.result_table.columnCount()):
+                self.result_table.setItem(row, column, QTableWidgetItem(str()))
 
     def __add_ga_param_in_result_table(self, agent, bp, index):
-        # TODO: redo it in designer.ui
-        self.result_table.setItem(index, ResultTableHeaders.ANGLE_NUM, QTableWidgetItem(str(agent.angles)))
-        self.result_table.setItem(index, ResultTableHeaders.ROTATE_ANGLE, QTableWidgetItem(str(agent.rotation)))
-        self.result_table.setItem(index, ResultTableHeaders.VOLUME_PART, QTableWidgetItem(str(agent.size)))
-        self.result_table.setItem(index, ResultTableHeaders.CELLS_OX, QTableWidgetItem(str(agent.x_amount)))
-        self.result_table.setItem(index, ResultTableHeaders.CELLS_OY, QTableWidgetItem(str(agent.y_amount)))
+        self.result_table.setItem(index, TableHeaders.ANGLE_NUM, QTableWidgetItem(str(agent.angles)))
+        self.result_table.setItem(index, TableHeaders.ROTATE_ANGLE, QTableWidgetItem(str(agent.rotation)))
+        self.result_table.setItem(index, TableHeaders.VOLUME_PART, QTableWidgetItem(str(agent.size)))
+        self.result_table.setItem(index, TableHeaders.CELLS_OX, QTableWidgetItem(str(agent.x_amount)))
+        self.result_table.setItem(index, TableHeaders.CELLS_OY, QTableWidgetItem(str(agent.y_amount)))
 
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_X0, QTableWidgetItem(str(bp.get_x0_body())))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_X1, QTableWidgetItem(str(bp.get_xend_body())))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Y0, QTableWidgetItem(str(bp.get_y0_body())))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Y1, QTableWidgetItem(str(bp.get_yend_body())))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Z0, QTableWidgetItem(str(bp.get_z0_body())))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Z1, QTableWidgetItem(str(bp.get_zend_body())))
+        self.result_table.setItem(index, TableHeaders.DETAIL_X0, QTableWidgetItem(str(bp.get_x0_body())))
+        self.result_table.setItem(index, TableHeaders.DETAIL_X1, QTableWidgetItem(str(bp.get_xend_body())))
+        self.result_table.setItem(index, TableHeaders.DETAIL_Y0, QTableWidgetItem(str(bp.get_y0_body())))
+        self.result_table.setItem(index, TableHeaders.DETAIL_Y1, QTableWidgetItem(str(bp.get_yend_body())))
+        self.result_table.setItem(index, TableHeaders.DETAIL_Z0, QTableWidgetItem(str(bp.get_z0_body())))
+        self.result_table.setItem(index, TableHeaders.DETAIL_Z1, QTableWidgetItem(str(bp.get_zend_body())))
 
-        self.result_table.setItem(index, ResultTableHeaders.STATUS, QTableWidgetItem(str()))
-        self.result_table.setItem(index, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str()))
+        self.result_table.setItem(index, TableHeaders.STATUS, QTableWidgetItem(str()))
+        self.result_table.setItem(index, TableHeaders.MAX_PRESS, QTableWidgetItem(str()))
+        self.result_table.setItem(index, TableHeaders.FITNESS, QTableWidgetItem(str()))
 
         self.result_table.resizeColumnsToContents()
 
-    def __add_calc_param_and_body_param_in_result_table(self, calculation_param: CalculationParams,
-                                                        body_param: BodyParameters, index: int):
-        self.result_table.setItem(index, ResultTableHeaders.ANGLE_NUM,
+    def __add_calc_param_and_body_param_in_result_table(self, calculation_param, body_param, index):
+        self.result_table.setItem(index, TableHeaders.ANGLE_NUM,
                                   QTableWidgetItem(str(calculation_param.angle_num)))
-        self.result_table.setItem(index, ResultTableHeaders.ROTATE_ANGLE,
+        self.result_table.setItem(index, TableHeaders.ROTATE_ANGLE,
                                   QTableWidgetItem(str(calculation_param.rotate_angle)))
-        self.result_table.setItem(index, ResultTableHeaders.VOLUME_PART,
+        self.result_table.setItem(index, TableHeaders.VOLUME_PART,
                                   QTableWidgetItem(str(calculation_param.volume_part)))
-        self.result_table.setItem(index, ResultTableHeaders.CELLS_OX,
+        self.result_table.setItem(index, TableHeaders.CELLS_OX,
                                   QTableWidgetItem(str(calculation_param.cells_ox)))
-        self.result_table.setItem(index, ResultTableHeaders.CELLS_OY,
+        self.result_table.setItem(index, TableHeaders.CELLS_OY,
                                   QTableWidgetItem(str(calculation_param.cells_oy)))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_X0,
+        self.result_table.setItem(index, TableHeaders.DETAIL_X0,
                                   QTableWidgetItem(str(body_param.get_x0_body())))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_X1,
+        self.result_table.setItem(index, TableHeaders.DETAIL_X1,
                                   QTableWidgetItem(str(body_param.get_xend_body())))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Y0,
+        self.result_table.setItem(index, TableHeaders.DETAIL_Y0,
                                   QTableWidgetItem(str(body_param.get_y0_body())))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Y1,
+        self.result_table.setItem(index, TableHeaders.DETAIL_Y1,
                                   QTableWidgetItem(str(body_param.get_yend_body())))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Z0,
+        self.result_table.setItem(index, TableHeaders.DETAIL_Z0,
                                   QTableWidgetItem(str(body_param.get_z0_body())))
-        self.result_table.setItem(index, ResultTableHeaders.DETAIL_Z1,
+        self.result_table.setItem(index, TableHeaders.DETAIL_Z1,
                                   QTableWidgetItem(str(body_param.get_zend_body())))
 
     def add_parents_data(self, stress, fitness):
         for i in range(2):
-            self.result_table.setItem(i, ResultTableHeaders.STATUS, QTableWidgetItem(f"Parent {i + 1}"))
-            self.result_table.setItem(i, ResultTableHeaders.MAX_PRESS, QTableWidgetItem(str(round(stress[i], 4))))
-            self.result_table.setItem(i, ResultTableHeaders.FITNESS, QTableWidgetItem(str(round(fitness[i], 4))))
+            self.result_table.setItem(i, TableHeaders.STATUS, QTableWidgetItem(f"Parent {i + 1}"))
+            self.result_table.setItem(i, TableHeaders.MAX_PRESS, QTableWidgetItem(str(round(stress[i], 4))))
+            self.result_table.setItem(i, TableHeaders.FITNESS, QTableWidgetItem(str(round(fitness[i], 4))))
 
     def show_result(self):
         # if row is picked
         if self.result_table.currentRow() != -1:
             self.calculation.show_result(self.result_table.currentRow())
+        else:
+            self.show_error("No experiment selected.")
 
     def show_stress_chart(self):
         if self.result_table.currentRow() != -1:
             self.calculation.show_stress_chart(self.result_table.currentRow())
+        else:
+            self.show_error("No experiment selected.")
 
 
 def main():
