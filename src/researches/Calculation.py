@@ -33,14 +33,9 @@ class CalculationParams:
 
 # class Calculation(QtCore.QThread):
 class Calculation:
-    detail_fn = str
-    load_schema_fn = str
-    root_folder = str
-    zero_stress = int
-    min_stress_for_all_time = list()
+    load_schema_fn = root_folder = detail_fn = zero_stress = stopped_id = ansys_manager = result_table = None
+    max_fitness_for_all_time = list()
     pop_data = None  # TODO: all generations data in 'pop_data'
-    ansys_manager = None
-    result_table = None
     threadpool = QtCore.QThreadPool()  # for multithreading
 
     def __init__(self, app):
@@ -51,6 +46,10 @@ class Calculation:
         worker.signals.current_stress_signal.connect(self.app.change_current_stress_label)
         worker.signals.increment_cb.connect(self.app.increment_cb_generation)
         worker.signals.change_table_signal.connect(self.app.change_table_item)
+        worker.signals.update_plot.connect(self.app.add_data_on_plot)
+
+        worker.signals.result.connect(self.print_output)
+        worker.signals.finished.connect(self.thread_complete)
 
     def research_UI(self):
         worker = Worker(self.research)
@@ -58,31 +57,12 @@ class Calculation:
 
         self.threadpool.start(worker)
 
-    def research(self, **kwargs):
-        # Stop or pause calculating
-        self.app.is_running = not self.app.is_running
-        self.app.button_play_pause.setDefault(self.app.is_running)  # TODO(?): make a separate thread
-
-        if self.ansys_manager is None:
-            self.set_up_research(kwargs.get("zero_stress_callback"))
-
-        self.calculate_infinity(**kwargs)
-
     def next_generation_research_UI(self):
         worker = Worker(self.next_generation_research)
         self.connect_worker_to_signals(worker)
         self.threadpool.start(worker)
 
-    def next_generation_research(self,  **kwargs):
-        self.app.button_play_pause.setEnabled(False)
-
-        if self.ansys_manager is None:
-            self.set_up_research(kwargs.get("zero_stress_callback"))
-        self.calculate_next_iteration(**kwargs)
-
-        self.app.button_play_pause.setEnabled(True)
-
-    def set_up_research(self, zero_stress_callback):
+    def set_up_research(self, **kwargs):
         # Prepare arguments for methods in class
         self.import_detail_and_load_schema_files(self.app.input_detail_file.text(),
                                                  self.app.input_load_schema_file.text())
@@ -93,12 +73,12 @@ class Calculation:
             self.ansys_manager = self.force_start_ansys()
 
         # Count zero_stress
-        zero_stress_callback.emit(" *****")
+        kwargs.get("zero_stress_callback").emit(" *****")
         self.calculate_zero_stress()
-        zero_stress_callback.emit(str(self.zero_stress))
+        kwargs.get("zero_stress_callback").emit(str(self.zero_stress))
 
     def calculate_zero_stress(self):
-        # uncomment in release version
+            # NOTE: Uncomment in release version
         # max_stress = self.research_zero_stress()
         max_stress = 1061.04292
 
@@ -120,106 +100,105 @@ class Calculation:
             return False
 
     def calculate_next_iteration(self, **kwargs):
-        if self.pop_data.generation_counter >= constants.GENERATION_LIMIT:
-            self.app.is_running = False
-            return
+        # Check if this is the first research
+        if self.zero_stress is None:
+            self.set_up_research(**kwargs)
 
-        # Crossover parents
-        if self.pop_data.generation_counter > 0:  # Not the first generation
-            self.crossover_parents(self.result_table)
+        # Increase combo_box text of generations
+        if self.pop_data.generation_counter > 0:
+            kwargs.get("increment_cb_callback").emit()
+
+        # Backup to excel file every N generation in case of some breaks
+        if (self.pop_data.generation_counter + 1) % constants.SAVE_TO_CSV_EVERY_N == 0:
+            self.app.save_csv("last_research.csv")
 
         # Count current generation
         self.calculate_current_research(**kwargs)
 
-    def calculate_infinity(self, **kwargs):
-        # An infinite cycle
-        while self.app.is_running:  # Continue the experiment
-            self.calculate_next_iteration(**kwargs)
-            QtCore.QThread.msleep(250)
-        else:
-            QtCore.QThread.msleep(1000)  # not overload CPU on pause
+        # Count finished data
+        finished = self.get_all_finished_id_stress_fitness(self.result_table)
+        min_stress = min([i[1] for i in finished])
+        max_fitness = max([i[2] for i in finished])
+        self.max_fitness_for_all_time.append(max_fitness)
 
-    def crossover_parents(self, result_table):
-        finished = self.get_all_finished_id_and_stress(result_table)
+        # Change stress label to current min stress
+        kwargs.get("curr_stress_callback").emit(str(min_stress))
+
+        # Update plot data
+        kwargs.get("plot_callback").emit(self.max_fitness_for_all_time)
+
+        # Save table state in Pop class
+        self.pop_data.save_result_table_state()
+
+        # If button is turned off and research is stopped - turn it on
+        if not self.app.is_running:
+            self.app.button_play_pause.setEnabled(True)
+
+        # Increment generation
+        self.pop_data.generation_counter += 1
+
+        # STOP
+        # Stop if limit exceeded
+        if self.pop_data.generation_counter >= constants.GENERATION_LIMIT:
+            self.app.is_running = False
+            return  # TODO: add time limit (don't forget about pause)
+
+    def crossover_parents(self):
+        finished = self.get_all_finished_id_stress_fitness(self.result_table)
 
         if len(finished) >= 2:
-            Genetic.start_new_generation(finished, self.zero_stress, result_table, self.app)
+            Genetic.start_new_generation(finished, self.zero_stress, self.result_table, self.app)
         else:
             # TODO: ??create and recalculate new generation??
             print("Bad News: Not enough parents.")
             pass
 
-        # def show_current_fitness(self, result_table, zero_stress):
-        #     finished = self.get_all_finished_id_and_stress(result_table)
-        #
-        #     population = Genetic.get_old_population(finished, result_table)
-        #
-        #     for agent in population:
-        #         # Genetic.calculate_fitness(agent, zero_stress)
-        #         Genetic.calculate_fitness_by_params(zero_stress,agent[1],agent[0].size,agent[0].x_amount*agent[0].y_amount)
-        #
-        #     fitness = []
-        #     for agent in population:
-        #         fitness.append(agent[2])
-        #
-        #     a = enumerate(fitness)
-        #     for i, j in list(a):
-        #         result_table.setItem(i, TableHeaders.FITNESS, QTableWidgetItem(str(round(j, 3))))
-        self.update_table(result_table)
+        self.update_table(self.result_table)  # TODO: ??update needed??
+
+    def research(self, **kwargs):
+        # Stop or pause calculating
+        if self.app.is_running:  # if stopped while research isn't complete - disable button
+            self.app.button_play_pause.setEnabled(False)
+
+        self.app.is_running = not self.app.is_running
+        self.app.button_play_pause.setDefault(self.app.is_running)
+
+        # An infinite cycle
+        while self.app.is_running:  # Continue the experiment
+            self.calculate_next_iteration(**kwargs)
+        print('infinity thread finishes.')
+
+    def next_generation_research(self,  **kwargs):
+        self.app.button_play_pause.setEnabled(False)
+
+        self.calculate_next_iteration(**kwargs)
+
+        self.app.button_play_pause.setEnabled(True)
 
     def calculate_current_research(self, **kwargs):
-        # # recoding to a Exel file
-        # file_path = self.root_folder + os.sep + "researches.csv"
-        # with open(file_path, mode="w", newline="") as researches_csv:
-        #     writer = csv.writer(researches_csv)
-        #     research_result_data = ["research_id", "angle_num", "rotate_angle", "vol_part", "cells_ox", "cells_oy",
-        #                             "research_Status"]
-        #     writer.writerow(research_result_data)
-        range_start = 2 if constants.SAVE_PARENTS and self.pop_data.generation_counter > 0 else 0
-
-        if self.pop_data.generation_counter > 0:
-            kwargs.get("increment_cb_callback").emit()
-
-            # Increment generation
-        self.pop_data.generation_counter += 1
-
-        # Backup every N generation in case of some breaks
-        if (self.pop_data.generation_counter + 1) % constants.SAVE_TO_CSV_EVERY_N == 0:
-            self.app.save_csv("last_research.csv")
+        # Start from the last stop
+        if self.stopped_id:
+            range_start = self.stopped_id
+            self.stopped_id = None
+        # Start from 3-rd agent; skip researching parents(0,1) if exists
+        elif constants.SAVE_PARENTS and self.pop_data.generation_counter > 0:
+            range_start = 2
+        # Start from the beginning
+        else:
+            range_start = 0
 
         for row_index in range(range_start, constants.POPULATION_SIZE):
+            # Stop if 'stop' button is pressed or a new experiment is loaded
+            if self.app.stop_calculation:  # todo: тут после сброса тру и не едет дальше
+                self.clear_and_exit()
+                self.stopped_id = row_index
+                return None
+
             param = self.__build_calculate_params(self.result_table, row_index)
             body_params = self.__build_body_params(self.result_table, row_index)
             cells = self.__calculate_cells(body_params, param)
 
-            kwargs.get("table_callback").emit(row_index, TableHeaders.STATUS, "Solving")
-
-            try:
-                self.researchFromDetailModel(body_params, param, cells, self.root_folder,
-                                             self.result_table, row_index, kwargs.get("table_callback"))
-                if constants.SAVE_TEMP_FILES:
-                    self.save_db_and_rst_files(row_index)
-
-            except Exception as e:
-                kwargs.get("table_callback").emit(row_index, TableHeaders.STATUS, "ERROR!")
-                # self.app.force_start_ansys() # TODO: restart ansys correctly and try to continue
-                print(e)
-
-            # self.__write_row_in_csv_results(row_index, param)
-            # count += 1
-
-        # Change stress label to current min stress
-        all_stress = [i[1] for i in self.get_all_finished_id_and_stress(self.result_table)]
-        min_stress = min(all_stress)
-        self.min_stress_for_all_time.append(min_stress)
-
-        # self.current_stress_signal.emit(str(min_stress))
-        kwargs.get("curr_stress_callback").emit(str(min_stress))
-
-        self.app.add_generation_stress_in_plot(self.min_stress_for_all_time)
-
-        # Save table state in class
-        self.pop_data.save_result_table_state()
+            self.researchFromDetailModel(body_params, param, cells, row_index, kwargs.get("table_callback"))
 
     def save_db_and_rst_files(self, row_index):
         # Copy '.db' files
@@ -232,14 +211,15 @@ class Calculation:
         target = self.root_folder + os.sep + f'{row_index + 1}.rst'
         shutil.copyfile(original, target)
 
-    def get_all_finished_id_and_stress(self, result_table):
-        # TODO: (maybe) REMAKE IT IN UI.py
+    def get_all_finished_id_stress_fitness(self, result_table):
+        # TODO: mb ID isn't using anywhere
         finished = []
         for i in range(constants.POPULATION_SIZE):
             status = result_table.item(i, TableHeaders.STATUS).text()
             if status == "Finished" or status == "Parent 1" or status == "Parent 2":
                 stress = float(result_table.item(i, TableHeaders.MAX_PRESS).text())
-                finished.append((i, stress))
+                fitness = float(result_table.item(i, TableHeaders.FITNESS).text())
+                finished.append((i, stress, fitness))
         return finished
 
     def import_detail_and_load_schema_files(self, detail_fn, load_schema_fn):
@@ -277,15 +257,16 @@ class Calculation:
         return cells
 
     def __write_row_in_csv_results(self, research_number: int, param: CalculationParams):
-        file_path = self.root_folder + os.sep + "researches.csv"
-        try:
-            with open(file_path, mode="a", newline="") as researches_csv:
-                writer = csv.writer(researches_csv)
-                writer.writerow(
-                    [research_number, param.angle_num, param.rotate_angle, param.volume_part, param.cells_ox,
-                     param.cells_oy, self.results[research_number][ResultIndexes.STATUS]])
-        except Exception as e:
-            print(e)
+        pass
+        # file_path = self.root_folder + os.sep + "researches.csv"
+        # try:
+        #     with open(file_path, mode="a", newline="") as researches_csv:
+        #         writer = csv.writer(researches_csv)
+                # writer.writerow(
+                #     [research_number, param.angle_num, param.rotate_angle, param.volume_part, param.cells_ox,
+                #      param.cells_oy, self.results[research_number][ResultIndexes.STATUS]])
+        # except Exception as e:
+        #     print(e)
 
     def __build_calculate_params(self, result_table: QtWidgets.QTableWidget, row_index: int) -> CalculationParams:
         return CalculationParams(
@@ -328,8 +309,10 @@ class Calculation:
         # table.resizeColumnsToContents()
         table.show()
 
-    def researchFromDetailModel(self, body_params, calc_param, cells, research_folder, result_table, count, table_callback):
+    def researchFromDetailModel(self, body_params, calc_param, cells, count, table_callback, first_try=True):
         try:
+            table_callback.emit(count, TableHeaders.STATUS, "Solving")
+
             cells_coordinates = self.__execute_ansys_commands(cells, body_params, calc_param)
 
             # count stress
@@ -338,23 +321,14 @@ class Calculation:
                 raise ValueError("Max stress is zero. MAPDL failed, there is a hole.")
 
             # count fitness
-            size = calc_param.volume_part
-            cells_amount = calc_param.cells_ox * calc_param.cells_oy
+            fitness = self.calculate_fitness_value(calc_param, count, max_press)
 
-            x_0 = float(self.result_table.item(count, TableHeaders.DETAIL_X0).text())
-            x_1 = float(self.result_table.item(count, TableHeaders.DETAIL_X1).text())
-            y_0 = float(self.result_table.item(count, TableHeaders.DETAIL_Y0).text())
-            y_1 = float(self.result_table.item(count, TableHeaders.DETAIL_Y1).text())
-            working_zone = ((x_0, x_1), (y_0, y_1))
-
-            fitness = Genetic.calculate_fitness_by_params(self.zero_stress, max_press, size, cells_amount, working_zone)
-
-            try:
-                # TODO: See 'TODO' in inner function
-                # self.write_all_nodes_coordinates(self.ansys_manager, research_folder)
-                pass
-            except Exception as e:
-                print(e)
+            # try:
+            #     # TODO: See 'TODO' in inner function
+            #     # self.write_all_nodes_coordinates(self.ansys_manager, research_folder)
+            #     pass
+            # except Exception as e:
+            #     print(e)
 
             # self.__write_cells_in_json(cells_coordinates, research_folder)
             table_callback.emit(count, TableHeaders.STATUS, "Finished")
@@ -363,32 +337,62 @@ class Calculation:
 
             self.exit_ansys_experiment()
 
-            # self.results[count] = [body_params, calc_param, cells, research_folder, 'FINISHED']
+            # Save temp files if needed
+            if constants.SAVE_TEMP_FILES:
+                self.save_db_and_rst_files(count)
+
             return True
 
-        except ValueError:
-            table_callback.emit(count, TableHeaders.STATUS, "Bad Cell")
-
         except Exception as e:
-            # TODO: Handle VMESH - "Meshing failure in volume..."
-            # TODO: Handle ??? - "Poorly shaped facets in surface mesh..."
-            print(traceback.format_exc())
+            # print(traceback.format_exc())
 
-            if result_table:
-                table_callback.emit(count, TableHeaders.STATUS, "Failed")
+            if len(e.args) == 6:  # breaks in load schema im 'solve' command -- understand why
+                if 'Low-level communication error -15: Connection was closed' in e.args[1]:
+                    table_callback.emit(count, TableHeaders.STATUS, "Restart")
+                    # QtCore.QThread.msleep(500)  # Wait some time for OS to delete lock file
+
+                    self.ansys_manager.exit()
+                    del self.ansys_manager
+                    # self.exit_ansys_experiment()
+                    self.ansys_manager = self.force_start_ansys()
+                    # If error is caused by user, try to restart one time
+                    if first_try and constants.RESTART_AFTER_ERROR:
+                        self.researchFromDetailModel(body_params, calc_param, cells, count, table_callback, False)
+                    return False
+
+            elif "Poorly shaped facets in surface mesh." in e.args[0]:
+                table_callback.emit(count, TableHeaders.STATUS, "Face ERR")
+            elif "VMESH failure, perhaps due to:" in e.args[0]:
+                table_callback.emit(count, TableHeaders.STATUS, "VMESH ERR")
+            elif "Meshing failure in volume" in e.args[0]:
+                table_callback.emit(count, TableHeaders.STATUS, "MESH ERR")
+            elif "Max stress is zero. MAPDL failed, there is a hole." in e.args[0]:
+                table_callback.emit(count, TableHeaders.STATUS, "Cell ERR")
+            else:  # TODO: check all unknown errors             e.args[1] - 'COMPLETED_NO'
+                table_callback.emit(count, TableHeaders.STATUS, "Unkn ERR")
+
+            # if "No volumes were meshed by the VMESH operation" in e.args[0]:
+            #     table_callback.emit(count, TableHeaders.STATUS, "VMESH ERR")
 
             # restart experiment in case of 'exit'
             try:
                 self.exit_ansys_experiment()
             except Exception:
-                # TODO: mapdl can exit and all programs crahses ://
                 self.ansys_manager = self.force_start_ansys()
-                self.clear_and_exit()
-                print("HARD EXIT")
-                quit()
                 return False
 
             return False
+
+    def calculate_fitness_value(self, calc_param, count, max_press):
+        size = calc_param.volume_part
+        cells_amount = calc_param.cells_ox * calc_param.cells_oy
+        x_0 = float(self.result_table.item(count, TableHeaders.DETAIL_X0).text())
+        x_1 = float(self.result_table.item(count, TableHeaders.DETAIL_X1).text())
+        y_0 = float(self.result_table.item(count, TableHeaders.DETAIL_Y0).text())
+        y_1 = float(self.result_table.item(count, TableHeaders.DETAIL_Y1).text())
+        working_zone = ((x_0, x_1), (y_0, y_1))
+        fitness = Genetic.calculate_fitness_by_params(self.zero_stress, max_press, size, cells_amount, working_zone)
+        return fitness
 
     def check_for_errors_basic(self):
         if self.app.result_table.rowCount() <= 0:
@@ -400,18 +404,8 @@ class Calculation:
         return self.check_for_errors_basic()
 
     # #######################################################
-    def progress_fn(self, n):
-        print("%d%% done" % n)
-
-    def execute_this_fn(self, progress_callback):
-        for n in range(0, 5):
-            # time.sleep(1)
-            progress_callback.emit(n * 100 / 4)
-
-        return "Done."
-
     def print_output(self, s):
-        print(s)
+        print("Thread result:", s)
 
     def thread_complete(self):
         print("THREAD COMPLETE!")
@@ -424,11 +418,14 @@ class Calculation:
             self.ansys_manager.clear()
 
     def clear_and_exit(self):
+        self.app.is_running = False
+        self.app.stop_calculation = False
+
         # correct closing ANSYS manager
         if self.ansys_manager is not None:
             self.exit_ansys_experiment()
             self.ansys_manager.exit()
-            self.app.is_running = False
+            self.ansys_manager = None
 
     def force_start_ansys(self):
         root_folder = self.create_root_folder_and_move_to_it()
@@ -490,7 +487,7 @@ class Calculation:
     def write_all_nodes_coordinates(self, research_folder: str, file: str = "nodes.csv"):
         nodes_data_frame = pd.DataFrame(columns=["node_id", "x", "y", "z"])
         start_node = 1
-        page_size = 10000  # TODO: it was '10000'
+        page_size = 10000  # basic: 10000
         end_node = start_node + page_size
         nodes_count = self.get_count_of_nodes()
         # ####
@@ -562,7 +559,7 @@ class Calculation:
             interactive_plotting=True,
             override=True,
             start_timeout=4000,
-            nproc=8,
+            nproc=4,
             memory=2,
             loglevel="DEBUG",
             log_apdl="w",
@@ -578,12 +575,12 @@ class Calculation:
 
     def show_result(self, index):
         status = self.result_table.item(index, TableHeaders.STATUS).text()
-        # if self.results[index][ResultIndexes.STATUS] == 'FINISHED':
+
         if status in ("Finished", "Parent 1", "Parent 2"):
-            # path = self.results[index][ResultIndexes.RESEARCH_FOLDER] + os.sep + "file.rst"
             path = self.root_folder + os.sep + f"{index + 1}.rst"
             os.system("py plot_result.py \"" + path + "\"")
-        print("Visualization done!")
+        else:
+            return "This research failed or unfinished."
 
     def show_stress_chart(self, index):
         status = self.result_table.item(index, TableHeaders.STATUS).text()
@@ -594,10 +591,3 @@ class Calculation:
     def show_cluster_analyse(self):
         os.system("py plot_cluster_analyse.py \"" + self.root_folder + "\"")
 
-
-class ResultIndexes:
-    BODY_PARAMS = 0
-    CALC_PARAMS = 1
-    CELLS = 2
-    RESEARCH_FOLDER = 3
-    STATUS = 4

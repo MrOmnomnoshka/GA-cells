@@ -2,7 +2,7 @@ import _thread as thread
 import sys
 
 from PyQt5.QtWidgets import QTableWidgetItem, QMessageBox, QDesktopWidget
-from PyQt5 import QtGui, QtWidgets
+from PyQt5 import QtGui, QtWidgets, QtCore
 import pyqtgraph as pg
 
 from src.researches.BodyParams import BodyParameters
@@ -10,13 +10,14 @@ from src.researches.Calculation import Calculation
 from src.researches.PopulationData import PopulationData
 from src.researches.TableHeaders import TableHeaders
 from src.researches.util import table_utils
-from forms import design  # Это наш конвертированный файл дизайна
+from forms import design, parameters  # Это наш конвертированный файл дизайна
 import src.researches.constants as constants
 
 
 class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
     is_running = False
     table_changed_by_program = False
+    stop_calculation = False
 
     def __init__(self):
         # Это здесь нужно для доступа к переменным, методам и т.д. в файле design.py
@@ -30,52 +31,62 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         self.connect_all_buttons()
         self.set_up_plot_and_table()
 
-    def set_window_position(self):
-        ag = QDesktopWidget().availableGeometry()
-        widget = self.geometry()
-        x = ag.width() // 2 - widget.width() // 2
-        self.move(x, 0)  # move window to TOP
-
     def connect_all_buttons(self):
         self.button_detail_file.clicked.connect(self.pick_model_file)
         self.button_load_schema_file.clicked.connect(self.pick_schema_load_file)
         self.button_create_researches.clicked.connect(self.fill_researches_list)
         self.button_play_pause.clicked.connect(self.button_play_pause_pressed)
         self.button_next.clicked.connect(self.button_next_pressed)
-        self.button_stop.clicked.connect(self.test_function)  # TODO: add stop action or remove the button
+        self.button_stop.clicked.connect(self.stop_current_research)
         self.button_result.clicked.connect(self.show_result)
         self.button_stress.clicked.connect(self.show_stress_chart)
         self.button_export.clicked.connect(self.save_csv)
         self.button_clusterization.clicked.connect(self.analyze_researches)
         self.button_import_researches.clicked.connect(self.load_csv)
 
+        self.action_Parameters.triggered.connect(self.open_parameters_window)
         self.cb_generation.currentIndexChanged.connect(self.load_table, self.cb_generation.currentIndex())
 
-    def test_function(self):
-        # self.population_data.save_result_table_state()
-        print(":)")
+    def open_parameters_window(self):
+        params = Parameters(self)
+        params.exec_()
+
+    def set_window_position(self):
+        ag = QDesktopWidget().availableGeometry()
+        widget = self.geometry()
+        x = ag.width() // 2 - widget.width() // 2
+        self.move(x, 0)  # move window to TOP
 
     def set_up_plot_and_table(self):
-        # Customize plot widget
-        app_color = self.palette().color(QtGui.QPalette.Window)
+        # PLOT widget customization
+        # Add Background colour to system color
+        app_color = self.palette().color(QtGui.QPalette.Window)  # Get the default window background
         self.graph_widget.setBackground(app_color)
+        # Add Title
+        self.graph_widget.setTitle("Population fitness", color="b", size="22px")
+        # Add Axis Labels
+        styles = {"color": "b", "font-size": "20px"}
+        self.graph_widget.setLabel("left", "Fitness", **styles)
+        self.graph_widget.setLabel("bottom", "Generation", **styles)
+        # Add legend
+        self.graph_widget.addLegend()
+        # Add grid
         self.graph_widget.showGrid(x=True, y=True)
-        # TODO: что бы было видно первую точку, сделать точки жирными и ставить их на график
-        # plot(x, y, color='green', linestyle='dashed', linewidth=3, marker='o', markerfacecolor='blue', markersize=12)
-        self.plot_widget = self.graph_widget.plotItem.plot(pen=pg.mkPen("b", width=2, marker="o", markersize=25))
+        # Add custom pen
+        pen = pg.mkPen("b", width=2)
+        self.data_line = self.graph_widget.plot(pen=pen, symbol='o', symbolSize=8, symbolBrush='b')
 
-        # TABLE
+        # TABLE widget customization
         # self.result_table.setRowCount(constants.POPULATION_SIZE)
         self.result_table.resizeColumnsToContents()  # TODO: resize it in 'untiled.ui'
 
-    def add_generation_stress_in_plot(self, data):
-        self.plot_widget.setData(data)
-        # self.graph_widget.plotItem.plot([generation], [stress], pen=pg.mkPen("b", width=2))
+    def add_data_on_plot(self, data):
+        self.data_line.setData(data)
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         if self.calculation is not None:
-            self.calculation.clear_and_exit()
-            # TODO: close ansys and all threads correct and fast
+            self.stop_and_clear_calculation()
+            # self.calculation.clear_and_exit()
         # print("Event: " + str(event))
 
     def load_csv(self):
@@ -168,6 +179,9 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         else:  # No errors
             self.calculation.next_generation_research_UI()
 
+    def stop_current_research(self):
+        self.stop_and_clear_calculation()
+
     def show_error(self, text):
         qm = QMessageBox()
         qm.warning(self, 'Warning', text, qm.Ok, qm.Ok)
@@ -191,7 +205,6 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         if self.population_data.generation_counter != 0:
             if self.are_you_sure_msg():
                 self.clear_ui()  # clear old data
-                # TODO: clear\save\remove calc_data, pop_data
             else:
                 return None  # Exit if pressed 'No'
 
@@ -200,14 +213,28 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         for i in range(constants.POPULATION_SIZE):
             self.count_body_params_and_add_in_table(self.population_data.population[0][i], i)
 
+    def stop_and_clear_calculation(self):
+        self.stop_calculation = True
+
     def clear_ui(self):
+        self.stop_and_clear_calculation()
+
+        # Wait until all is done
+        while self.calculation.threadpool.activeThreadCount() != 0:
+            QtCore.QThread.msleep(250)
+
+        # Clear calc
+        self.calculation.max_fitness_for_all_time.clear()
+
+        # Clear pop_data
+        self.population_data.clear()
+
+        # Clear UI
         self.change_current_stress_label("")
         self.change_zero_stress_label("")
-
-        self.cb_generation.clear()  # TODO: bug with vertical scroll bar appears (update/repaint - does't work)
+        self.cb_generation.clear()  # T0D0(mb): bug with vertical scroll bar appears (update/repaint - does't work)
         self.increment_cb_generation()
-
-        self.plot_widget.clear()
+        self.data_line.clear()
 
     def count_body_params_and_add_in_table(self, agent, i):
         body_params = self.__get_body_params_ga(agent)
@@ -271,17 +298,61 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
             self.result_table.setItem(i, TableHeaders.FITNESS, QTableWidgetItem(str(round(fitness[i], 4))))
 
     def show_result(self):
-        # if row is picked
-        if self.result_table.currentRow() != -1:
-            self.calculation.show_result(self.result_table.currentRow())
-        else:
-            self.show_error("No experiment selected.")
+        # Temporary files exist
+        if not constants.SAVE_TEMP_FILES:
+            return self.show_error("Temporary files are not saved.")
+
+        # Row is picked
+        if self.result_table.currentRow() == -1:
+            return self.show_error("No experiment selected.")
+
+        # No experiment is done
+        if self.calculation.result_table is None:  # cause result table is connecting only in 'set_up_research' method
+            return self.show_error("No experiment has been researched.")
+
+        answer = self.calculation.show_result(self.result_table.currentRow())
+        if answer:
+            self.show_error(answer)
 
     def show_stress_chart(self):
         if self.result_table.currentRow() != -1:
             self.calculation.show_stress_chart(self.result_table.currentRow())
         else:
             self.show_error("No experiment selected.")
+
+
+class Parameters(QtWidgets.QDialog, parameters.Ui_Dialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setupUi(self)  # Это нужно для инициализации нашего дизайна
+        self.init_parameters()  # Init const values
+        self.btn_save.clicked.connect(self.save_and_exit)  # Save const values
+
+    def init_parameters(self):
+        self.sb_pop_size.setValue(constants.POPULATION_SIZE)
+        self.sb_max_stress.setValue(constants.MAX_STRESS)
+        self.sb_every_exel.setValue(constants.SAVE_TO_CSV_EVERY_N)
+        self.sb_time_limit.setValue(constants.TIME_LIMIT)
+        self.sb_gen_limit.setValue(constants.GENERATION_LIMIT)
+
+        self.cb_save_parents.setChecked(constants.SAVE_PARENTS)
+        self.cb_save_temp.setChecked(constants.SAVE_TEMP_FILES)
+        self.cb_save_to_exel.setChecked(constants.BACKUP_TO_CSV)
+        self.cb_restart_ansys.setChecked(constants.RESTART_AFTER_ERROR)
+
+    def save_and_exit(self):
+        constants.POPULATION_SIZE = int(self.sb_pop_size.value())
+        constants.MAX_STRESS = int(self.sb_max_stress.value())
+        constants.SAVE_TO_CSV_EVERY_N = int(self.sb_every_exel.value())
+        constants.TIME_LIMIT = int(self.sb_time_limit.value())
+        constants.GENERATION_LIMIT = int(self.sb_gen_limit.value())
+
+        constants.SAVE_PARENTS = self.cb_save_parents.checkState()
+        constants.SAVE_TEMP_FILES = self.cb_save_temp.checkState()
+        constants.BACKUP_TO_CSV = self.cb_save_to_exel.checkState()
+        constants.RESTART_AFTER_ERROR = self.cb_restart_ansys.checkState()
+
+        self.close()
 
 
 def main():

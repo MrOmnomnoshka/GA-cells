@@ -5,15 +5,19 @@ from PyQt5.QtWidgets import QTableWidgetItem
 
 
 class PopulationData:
-    # BIG TODO: 1) во всех других местах ссылаться сюда.
     generation_counter = 0
     current_generation = 0
-    # selected_generation = 0
-    population = []
+    population = list()
     table_data = list()
 
     def __init__(self, result_table):
         self.result_table = result_table
+
+    def clear(self):
+        self.generation_counter = 0
+        self.current_generation = 0
+        self.population.clear()
+        self.table_data.clear()
 
     def save_result_table_state(self):
         data = []
@@ -29,7 +33,8 @@ class PopulationData:
     def change_result_table_by_generation(self, generation):
         for row in range(self.result_table.rowCount()):
             for column in range(self.result_table.columnCount()):
-                self.result_table.setItem(row, column, QTableWidgetItem(self.table_data[generation][row][column]))
+                if self.table_data:
+                    self.result_table.setItem(row, column, QTableWidgetItem(self.table_data[generation][row][column]))
 
     def create_first_population(self):
         self.population = [[]]  # clear old data

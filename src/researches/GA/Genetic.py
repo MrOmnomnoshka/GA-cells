@@ -9,14 +9,14 @@ def calculate_fitness_by_params(zero_stress, agent_stress, agent_size, agent_cel
     area = width * height
 
     # # Maximize size and area function (best - max)
-    s_remap = remap(agent_size, 0, 100, 0, area)
-    fitness = area * 0.5 + s_remap
+    # s_remap = remap(agent_size, 0, 100, 0, area)
+    # fitness = area * 0.5 + s_remap
     # # ###########################################
 
     # Get 70% max_stress and max amount and max area (best - max)
-    # delta_stress = abs(constants.MAX_STRESS * 0.7 - agent_stress)
-    # a_remap = remap(agent_cells_amount, 0, 25, 0, area)
-    # fitness = (area * 0.4 + a_remap * 1.4) * 0.2 - delta_stress
+    delta_stress = abs(constants.MAX_STRESS * 0.7 - agent_stress)
+    a_remap = remap(agent_cells_amount, 0, 25, 0, area)
+    fitness = (area * 0.4 + a_remap * 1.4) * 0.2 - delta_stress
     # ###########################################
 
     # ??? ==============

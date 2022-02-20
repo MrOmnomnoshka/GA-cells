@@ -7,11 +7,11 @@
     <x>0</x>
     <y>0</y>
     <width>1240</width>
-    <height>632</height>
+    <height>653</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>PyAnsys Celluar Structure v2.1</string>
+   <string>PyAnsys Celluar Structure v2.2</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_5">
@@ -293,6 +293,9 @@
           </item>
           <item>
            <widget class="QPushButton" name="button_stop">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="sizePolicy">
              <sizepolicy hsizetype="Maximum" vsizetype="Maximum">
               <horstretch>0</horstretch>
@@ -338,7 +341,7 @@
           <item>
            <widget class="QPushButton" name="button_clusterization">
             <property name="text">
-             <string>Анализ эксприментов</string>
+             <string>Анализ экспериментов</string>
             </property>
            </widget>
           </item>
@@ -350,6 +353,40 @@
     </item>
    </layout>
   </widget>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1240</width>
+     <height>26</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menu_Window">
+    <property name="title">
+     <string>&amp;Окно</string>
+    </property>
+    <addaction name="action_Parameters"/>
+   </widget>
+   <widget class="QMenu" name="menu_Help">
+    <property name="title">
+     <string>&amp;Справка</string>
+    </property>
+    <addaction name="action_About"/>
+   </widget>
+   <addaction name="menu_Window"/>
+   <addaction name="menu_Help"/>
+  </widget>
+  <action name="action_About">
+   <property name="text">
+    <string>&amp;О программе</string>
+   </property>
+  </action>
+  <action name="action_Parameters">
+   <property name="text">
+    <string>&amp;Параметры</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>

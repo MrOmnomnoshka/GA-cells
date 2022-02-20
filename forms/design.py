@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(1240, 632)
+        MainWindow.resize(1240, 653)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayout_5 = QtWidgets.QVBoxLayout(self.centralwidget)
@@ -161,6 +161,7 @@ class Ui_MainWindow(object):
         self.button_next.setObjectName("button_next")
         self.horizontalLayout_3.addWidget(self.button_next)
         self.button_stop = QtWidgets.QPushButton(self.centralwidget)
+        self.button_stop.setEnabled(False)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Maximum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -189,13 +190,29 @@ class Ui_MainWindow(object):
         self.horizontalLayout_7.addLayout(self.verticalLayout_4)
         self.verticalLayout_5.addLayout(self.horizontalLayout_7)
         MainWindow.setCentralWidget(self.centralwidget)
+        self.menuBar = QtWidgets.QMenuBar(MainWindow)
+        self.menuBar.setGeometry(QtCore.QRect(0, 0, 1240, 26))
+        self.menuBar.setObjectName("menuBar")
+        self.menu_Window = QtWidgets.QMenu(self.menuBar)
+        self.menu_Window.setObjectName("menu_Window")
+        self.menu_Help = QtWidgets.QMenu(self.menuBar)
+        self.menu_Help.setObjectName("menu_Help")
+        MainWindow.setMenuBar(self.menuBar)
+        self.action_About = QtWidgets.QAction(MainWindow)
+        self.action_About.setObjectName("action_About")
+        self.action_Parameters = QtWidgets.QAction(MainWindow)
+        self.action_Parameters.setObjectName("action_Parameters")
+        self.menu_Window.addAction(self.action_Parameters)
+        self.menu_Help.addAction(self.action_About)
+        self.menuBar.addAction(self.menu_Window.menuAction())
+        self.menuBar.addAction(self.menu_Help.menuAction())
 
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "PyAnsys Celluar Structure v2.1"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "PyAnsys Celluar Structure v2.2"))
         item = self.result_table.horizontalHeaderItem(0)
         item.setText(_translate("MainWindow", "N"))
         item = self.result_table.horizontalHeaderItem(1)
@@ -236,5 +253,9 @@ class Ui_MainWindow(object):
         self.cb_generation.setItemText(0, _translate("MainWindow", "Поколение: 0"))
         self.button_result.setText(_translate("MainWindow", "Результат"))
         self.button_stress.setText(_translate("MainWindow", "Стресс"))
-        self.button_clusterization.setText(_translate("MainWindow", "Анализ эксприментов"))
+        self.button_clusterization.setText(_translate("MainWindow", "Анализ экспериментов"))
+        self.menu_Window.setTitle(_translate("MainWindow", "&Окно"))
+        self.menu_Help.setTitle(_translate("MainWindow", "&Справка"))
+        self.action_About.setText(_translate("MainWindow", "&О программе"))
+        self.action_Parameters.setText(_translate("MainWindow", "&Параметры"))
 from pyqtgraph import PlotWidget

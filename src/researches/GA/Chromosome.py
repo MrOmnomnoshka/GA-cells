@@ -10,11 +10,11 @@ class Chromosome:
     y_min, y_max = 0, 250
     z_min, z_max = 0, 250
 
-    an_min, an_max = 3, 5  # 3-8
+    an_min, an_max = 3, 6  # 3-8
     rt_min, rt_max = 0, 360
     sz_min, sz_max = 1, 99
-    xa_min, xa_max = 1, 2  # 1-15
-    ya_min, ya_max = 1, 2  # 1-15
+    xa_min, xa_max = 1, 2  # 1-10
+    ya_min, ya_max = 1, 2  # 1-10
 
     def __init__(self, working_zone=tuple, angles=int, rotation=int, size=int, x_amount=int, y_amount=int, depth=False):
         self.working_zone = working_zone

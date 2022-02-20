@@ -8,11 +8,12 @@ class WorkerSignals(QObject):
     finished = pyqtSignal()
     error = pyqtSignal(tuple)
     result = pyqtSignal(object)
-    progress = pyqtSignal(str)
+
     zero_stress_signal = pyqtSignal(str)
     current_stress_signal = pyqtSignal(str)
     increment_cb = pyqtSignal()
     change_table_signal = pyqtSignal(int, int, str)
+    update_plot = pyqtSignal(list)
 
 
 class Worker(QRunnable):
@@ -39,11 +40,11 @@ class Worker(QRunnable):
         self.signals = WorkerSignals()
 
         # Add the callback to our kwargs
-        # self.kwargs['progress_callback'] = self.signals.progress
         self.kwargs['zero_stress_callback'] = self.signals.zero_stress_signal
         self.kwargs['curr_stress_callback'] = self.signals.current_stress_signal
         self.kwargs['increment_cb_callback'] = self.signals.increment_cb
         self.kwargs['table_callback'] = self.signals.change_table_signal
+        self.kwargs['plot_callback'] = self.signals.update_plot
 
     @pyqtSlot()
     def run(self):
