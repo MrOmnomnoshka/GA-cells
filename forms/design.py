@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'untitled.ui'
+# Form implementation generated from reading ui file 'design.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.4
 #
@@ -25,6 +25,7 @@ class Ui_MainWindow(object):
         self.verticalLayout_3.setObjectName("verticalLayout_3")
         self.result_table = QtWidgets.QTableWidget(self.centralwidget)
         self.result_table.setMinimumSize(QtCore.QSize(855, 0))
+        self.result_table.setDragDropMode(QtWidgets.QAbstractItemView.DragDrop)
         self.result_table.setObjectName("result_table")
         self.result_table.setColumnCount(14)
         self.result_table.setRowCount(0)
@@ -212,7 +213,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "PyAnsys Celluar Structure v2.2"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "PyAnsys Celluar Structure v2.3"))
         item = self.result_table.horizontalHeaderItem(0)
         item.setText(_translate("MainWindow", "N"))
         item = self.result_table.horizontalHeaderItem(1)
@@ -242,9 +243,7 @@ class Ui_MainWindow(object):
         item = self.result_table.horizontalHeaderItem(13)
         item.setText(_translate("MainWindow", "Max Fitness"))
         self.button_detail_file.setText(_translate("MainWindow", "Файл детали"))
-        self.input_detail_file.setText(_translate("MainWindow", "D:\\DIPLOMA\\app\\researcher\\model_250x250x250mm.igs"))
         self.button_load_schema_file.setText(_translate("MainWindow", "Файл нагрузки"))
-        self.input_load_schema_file.setText(_translate("MainWindow", "D:\\DIPLOMA\\app\\researcher\\load_schema2.txt"))
         self.button_create_researches.setText(_translate("MainWindow", "Создать эксперименты"))
         self.button_import_researches.setText(_translate("MainWindow", "Импортировать эксперименты"))
         self.button_export.setText(_translate("MainWindow", "Экспортировать эксперименты"))

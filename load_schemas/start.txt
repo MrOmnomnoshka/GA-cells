@@ -1,0 +1,32 @@
+!All starting command, next to them add Your NEW loads
+
+/AUX15  
+!*  
+IOPTN,IGES,SMOOTH   
+IOPTN,MERGE,NO  
+IOPTN,SOLID,NO  
+IOPTN,SMALL,NO  
+IOPTN,GTOLER, DEFA  
+IGESIN,'block_200_300_20','IGS','igs\'
+
+/PREP7
+NUMMRG, ALL
+NUMCMP, ALL
+/UNITS, mpa
+VA, ALL
+
+!add parameters
+/PREP7
+DENSITY   = 7.85e-6
+YOUNG     = 210000.0
+MP,EX,1,YOUNG
+MP,NUXY,1,0.3
+MP,DENS,1,DENSITY
+et,1,solid186
+
+!generate mesh
+!SMRT,10   !! smart size of meshing [1-10]
+MSHKEY,0
+MSHAPE,1,3d
+VMESH,all
+ASEL,ALL
