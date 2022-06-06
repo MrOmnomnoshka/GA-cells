@@ -1,10 +1,10 @@
-import ansys.mapdl.reader as pyansys
-import numpy as np
-import pandas as pd
+if __name__ == "__main__":
+    import sys
+    import ansys.mapdl.reader as pyansys
+    import numpy as np
+    import pandas as pd
 
-
-def show_stress_chart(file_name):
-    print('FILE NAME: ' + file_name)
+    file_name = sys.argv[1]
     result_stress = pyansys.read_binary(file_name).nodal_stress(0)
     principal_result_stress = pyansys.read_binary(file_name).principal_nodal_stress(0)
 

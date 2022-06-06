@@ -83,7 +83,6 @@ class Ui_Dialog(object):
         self.remove_all_btn.setObjectName("remove_all_btn")
         self.remove_all_btn.clicked.connect(self.remove_all_nodes)
 
-
         self.retranslateUi(Dialog)
         QtCore.QMetaObject.connectSlotsByName(Dialog)
 

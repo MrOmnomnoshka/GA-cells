@@ -6,14 +6,199 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>640</width>
-    <height>480</height>
+    <width>636</width>
+    <height>891</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Параметры</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_3">
+   <item>
+    <layout class="QVBoxLayout" name="verticalLayout_5">
+     <item>
+      <layout class="QHBoxLayout" name="title_research_3">
+       <item>
+        <widget class="Line" name="line_l_3">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="title_3">
+         <property name="font">
+          <font>
+           <pointsize>9</pointsize>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="text">
+          <string>Настройка функции приспособленности</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="line_r_3">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="research_settings_2">
+       <item>
+        <widget class="QGroupBox" name="gb_volume">
+         <property name="title">
+          <string>Обём рабочей области</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_13">
+          <item>
+           <widget class="QRadioButton" name="rb_vol_min">
+            <property name="text">
+             <string>Мин</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="rb_vol_max">
+            <property name="text">
+             <string>Макс</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="gb_size">
+         <property name="title">
+          <string>Размер ячеек</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_17">
+          <item>
+           <widget class="QRadioButton" name="rb_size_min">
+            <property name="text">
+             <string>Мин</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="rb_size_max">
+            <property name="text">
+             <string>Макс</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="gb_amount">
+         <property name="title">
+          <string>Количество ячеек</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_14">
+          <item>
+           <widget class="QRadioButton" name="rb_amount_min">
+            <property name="text">
+             <string>Мин</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="rb_amount_max">
+            <property name="text">
+             <string>Макс</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="gb_mass">
+         <property name="title">
+          <string>Масса детали</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_16">
+          <item>
+           <widget class="QRadioButton" name="rb_mass_min">
+            <property name="text">
+             <string>Мин</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="rb_mass_max">
+            <property name="text">
+             <string>Макс</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="gb_stress">
+         <property name="title">
+          <string>Напряжение</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_19">
+          <item>
+           <widget class="QRadioButton" name="rb_stress_min">
+            <property name="text">
+             <string>Мин</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="rb_stress_max">
+            <property name="text">
+             <string>Макс</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
    <item>
     <layout class="QVBoxLayout" name="verticalLayout">
      <item>
@@ -66,19 +251,16 @@
            <property name="maximum">
             <number>99</number>
            </property>
-           <property name="value">
-            <number>6</number>
-           </property>
           </widget>
          </item>
-         <item row="2" column="0">
+         <item row="3" column="0">
           <widget class="QLabel" name="label_2">
            <property name="text">
             <string>Максимальный стресс:</string>
            </property>
           </widget>
          </item>
-         <item row="2" column="1">
+         <item row="3" column="1">
           <widget class="QSpinBox" name="sb_max_stress">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -93,24 +275,21 @@
             <number>1</number>
            </property>
            <property name="maximum">
-            <number>99999</number>
+            <number>999999</number>
            </property>
            <property name="singleStep">
-            <number>10</number>
-           </property>
-           <property name="value">
-            <number>20000</number>
+            <number>10000</number>
            </property>
           </widget>
          </item>
-         <item row="3" column="0">
+         <item row="4" column="0">
           <widget class="QLabel" name="label_5">
            <property name="text">
             <string>Сохранять в EXEL каждый N:</string>
            </property>
           </widget>
          </item>
-         <item row="3" column="1">
+         <item row="4" column="1">
           <widget class="QSpinBox" name="sb_every_exel">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -127,19 +306,16 @@
            <property name="singleStep">
             <number>1</number>
            </property>
-           <property name="value">
-            <number>4</number>
-           </property>
           </widget>
          </item>
-         <item row="4" column="0">
+         <item row="5" column="0">
           <widget class="QLabel" name="label_4">
            <property name="text">
             <string>Ограничение по времени(мин):</string>
            </property>
           </widget>
          </item>
-         <item row="4" column="1">
+         <item row="5" column="1">
           <widget class="QSpinBox" name="sb_time_limit">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -156,19 +332,16 @@
            <property name="singleStep">
             <number>1</number>
            </property>
-           <property name="value">
-            <number>15</number>
-           </property>
           </widget>
          </item>
-         <item row="5" column="0">
+         <item row="6" column="0">
           <widget class="QLabel" name="label_3">
            <property name="text">
             <string>Ограничение по поколениям:</string>
            </property>
           </widget>
          </item>
-         <item row="5" column="1">
+         <item row="6" column="1">
           <widget class="QSpinBox" name="sb_gen_limit">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -184,9 +357,6 @@
            </property>
            <property name="singleStep">
             <number>5</number>
-           </property>
-           <property name="value">
-            <number>30</number>
            </property>
           </widget>
          </item>
@@ -204,25 +374,65 @@
            </property>
           </widget>
          </item>
-         <item row="1" column="1">
-          <widget class="QDoubleSpinBox" name="dsb_mut_per">
+         <item row="2" column="0">
+          <widget class="QLabel" name="label_9">
+           <property name="text">
+            <string>Сила мутации %:</string>
+           </property>
+          </widget>
+         </item>
+         <item row="7" column="0">
+          <widget class="QLabel" name="label_10">
+           <property name="text">
+            <string>Количество элитных особей:</string>
+           </property>
+          </widget>
+         </item>
+         <item row="7" column="1">
+          <widget class="QSpinBox" name="sb_elite_amount">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
              <horstretch>0</horstretch>
              <verstretch>0</verstretch>
             </sizepolicy>
            </property>
-           <property name="decimals">
-            <number>2</number>
-           </property>
            <property name="minimum">
-            <double>0.010000000000000</double>
+            <number>1</number>
            </property>
            <property name="maximum">
-            <double>100.000000000000000</double>
+            <number>99</number>
            </property>
-           <property name="value">
-            <double>5.000000000000000</double>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QSpinBox" name="sb_mut_chanse">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>100</number>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QSpinBox" name="sb_mut_size">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>100</number>
            </property>
           </widget>
          </item>
@@ -234,22 +444,9 @@
           <number>9</number>
          </property>
          <item>
-          <widget class="QCheckBox" name="cb_save_parents">
-           <property name="text">
-            <string>Сохранять родителей</string>
-           </property>
-           <property name="checked">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-         <item>
           <widget class="QCheckBox" name="cb_save_temp">
            <property name="text">
             <string>Сохранять файлы нагрузки</string>
-           </property>
-           <property name="checked">
-            <bool>true</bool>
            </property>
           </widget>
          </item>
@@ -260,9 +457,6 @@
            </property>
            <property name="text">
             <string>Бэкап прогресса в EXEL</string>
-           </property>
-           <property name="checked">
-            <bool>true</bool>
            </property>
           </widget>
          </item>
@@ -283,14 +477,67 @@
           </widget>
          </item>
          <item>
+          <widget class="QCheckBox" name="cb_oy_symm">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="whatsThis">
+            <string>В случае если Ansys закроется, попытаться один раз его перезагрузить.</string>
+           </property>
+           <property name="text">
+            <string>Симметрия по оси Y</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="cb_elite">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="whatsThis">
+            <string>В случае если Ansys закроется, попытаться один раз его перезагрузить.</string>
+           </property>
+           <property name="text">
+            <string>Элитарная стратегия ГА</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="cb_save_parents">
+           <property name="text">
+            <string>Сохранять родителей</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="cb_save_elite">
+           <property name="text">
+            <string>Сохранять элиту</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="cb_cells_depth">
+           <property name="text">
+            <string>Сквозные ячейки</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <spacer name="verticalSpacer">
            <property name="orientation">
             <enum>Qt::Vertical</enum>
            </property>
            <property name="sizeHint" stdset="0">
             <size>
-             <width>20</width>
-             <height>40</height>
+             <width>0</width>
+             <height>0</height>
             </size>
            </property>
           </spacer>
@@ -322,7 +569,7 @@
           </font>
          </property>
          <property name="text">
-          <string>Настройка параметров ГА</string>
+          <string>Настройка параметров хромосомы</string>
          </property>
         </widget>
        </item>
@@ -357,9 +604,6 @@
          </property>
          <property name="maximum">
           <number>20</number>
-         </property>
-         <property name="value">
-          <number>3</number>
          </property>
         </widget>
        </item>
@@ -396,9 +640,6 @@
          <property name="singleStep">
           <number>10</number>
          </property>
-         <property name="value">
-          <number>0</number>
-         </property>
         </widget>
        </item>
        <item row="1" column="0">
@@ -422,9 +663,6 @@
          <property name="maximum">
           <number>20</number>
          </property>
-         <property name="value">
-          <number>6</number>
-         </property>
         </widget>
        </item>
        <item row="3" column="2">
@@ -443,9 +681,6 @@
          </property>
          <property name="singleStep">
           <number>1</number>
-         </property>
-         <property name="value">
-          <number>99</number>
          </property>
         </widget>
        </item>
@@ -473,9 +708,6 @@
          <property name="singleStep">
           <number>1</number>
          </property>
-         <property name="value">
-          <number>1</number>
-         </property>
         </widget>
        </item>
        <item row="2" column="2">
@@ -498,9 +730,6 @@
          <property name="singleStep">
           <number>10</number>
          </property>
-         <property name="value">
-          <number>360</number>
-         </property>
         </widget>
        </item>
        <item row="4" column="1">
@@ -518,9 +747,6 @@
           <number>15</number>
          </property>
          <property name="singleStep">
-          <number>1</number>
-         </property>
-         <property name="value">
           <number>1</number>
          </property>
         </widget>
@@ -542,9 +768,6 @@
          <property name="singleStep">
           <number>1</number>
          </property>
-         <property name="value">
-          <number>1</number>
-         </property>
         </widget>
        </item>
        <item row="4" column="2">
@@ -563,9 +786,6 @@
          </property>
          <property name="singleStep">
           <number>1</number>
-         </property>
-         <property name="value">
-          <number>3</number>
          </property>
         </widget>
        </item>
@@ -592,9 +812,6 @@
          </property>
          <property name="singleStep">
           <number>1</number>
-         </property>
-         <property name="value">
-          <number>3</number>
          </property>
         </widget>
        </item>
@@ -661,12 +878,28 @@
    <slot>setEnabled(bool)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>453</x>
-     <y>107</y>
+     <x>621</x>
+     <y>393</y>
     </hint>
     <hint type="destinationlabel">
-     <x>235</x>
-     <y>109</y>
+     <x>246</x>
+     <y>453</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>cb_elite</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>sb_elite_amount</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>391</x>
+     <y>475</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>230</x>
+     <y>529</y>
     </hint>
    </hints>
   </connection>

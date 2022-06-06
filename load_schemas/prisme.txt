@@ -1,0 +1,15 @@
+!add displacement
+FLST,2,2,5,ORDE,2
+FITEM,2,1
+FITEM,2,14
+!*
+/GO
+DA,P51X,ALL,
+
+!add pressure 5000PA
+FLST,2,2,5,ORDE,2
+FITEM,2,7
+FITEM,2,11
+/GO
+!*
+SFA,P51X,1,PRES,5000

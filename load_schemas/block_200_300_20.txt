@@ -1,0 +1,15 @@
+!~SATIN,'prisme_top','sat','.\igs\',SOLIDS,0
+
+!add displacement
+FLST,2,1,5,ORDE,1   
+FITEM,2,5   
+!*  
+/GO 
+DA,P51X,ALL,
+
+!add presure 5000PA
+FLST,2,1,5,ORDE,1   
+FITEM,2,4   
+/GO 
+!*  
+SFA,P51X,1,PRES,5000

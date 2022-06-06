@@ -14,7 +14,7 @@ class WorkerSignals(QObject):
     increment_cb = pyqtSignal()
     change_table_signal = pyqtSignal(int, int, str)
     update_plot = pyqtSignal(list)
-    calc_dimension = pyqtSignal(list)
+    toggle_buttons = pyqtSignal(bool)
 
 
 class Worker(QRunnable):
@@ -46,7 +46,7 @@ class Worker(QRunnable):
         self.kwargs['increment_cb_callback'] = self.signals.increment_cb
         self.kwargs['table_callback'] = self.signals.change_table_signal
         self.kwargs['plot_callback'] = self.signals.update_plot
-        self.kwargs['dimension_callback'] = self.signals.calc_dimension
+        self.kwargs['ui_buttons_callback'] = self.signals.toggle_buttons
 
     @pyqtSlot()
     def run(self):

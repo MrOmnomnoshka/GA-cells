@@ -1,10 +1,13 @@
-import ansys.mapdl.reader as pyansys
+if __name__ == "__main__":
+    import sys
+    import ansys.mapdl.reader as pyansys
 
-
-def show_principal_nodal_stress(file_name):
-    # print('FILE NAME: ' + file_name)
+    file_name = sys.argv[1]
     res = pyansys.read_binary(file_name)
-    res.plot_principal_nodal_stress(0, 'seqv')  # , cpos="yx")  # , True)
+    res.plot_principal_nodal_stress(0, 'seqv', cpos="xy")  # , cpos="xy")  # , True)
+
+    res.plot_principal_nodal_stress(0, 'seqv', True, cpos="xy")
+    res.animate_nodal_solution(0, n_frames=200, cpos="xy")
 
     # Other working options
     # res.plot(0)

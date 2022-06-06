@@ -1,0 +1,22 @@
+!add displacement
+FLST,2,2,5,ORDE,2   
+FITEM,2,3   
+FITEM,2,6   
+!*  
+/GO 
+DA,P51X,ALL,
+
+!add presure 5000PA
+!LEFT PART
+FLST,2,1,5,ORDE,1   
+FITEM,2,1   
+/GO 
+!*  
+SFA,P51X,1,PRES,5000
+
+!RIGHT PART
+FLST,2,1,5,ORDE,1   
+FITEM,2,11  
+/GO 
+!*  
+SFA,P51X,1,PRES,-5000

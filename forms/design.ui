@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1240</width>
+    <width>1251</width>
     <height>653</height>
    </rect>
   </property>
@@ -23,7 +23,7 @@
          <widget class="QTableWidget" name="result_table">
           <property name="minimumSize">
            <size>
-            <width>855</width>
+            <width>866</width>
             <height>0</height>
            </size>
           </property>
@@ -237,7 +237,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="button_play_pause">
+           <widget class="QPushButton" name="button_play">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Maximum" vsizetype="Maximum">
               <horstretch>0</horstretch>
@@ -252,7 +252,7 @@
             </property>
             <property name="icon">
              <iconset>
-              <normaloff>C:/Users/XIAOMi/Pictures/pause play.png</normaloff>C:/Users/XIAOMi/Pictures/pause play.png</iconset>
+              <normaloff>icons/play.png</normaloff>icons/play.png</iconset>
             </property>
             <property name="iconSize">
              <size>
@@ -278,7 +278,7 @@
             </property>
             <property name="icon">
              <iconset>
-              <normaloff>C:/Users/XIAOMi/Pictures/next.png</normaloff>C:/Users/XIAOMi/Pictures/next.png</iconset>
+              <normaloff>icons/next.png</normaloff>icons/next.png</iconset>
             </property>
             <property name="iconSize">
              <size>
@@ -307,7 +307,7 @@
             </property>
             <property name="icon">
              <iconset>
-              <normaloff>C:/Users/XIAOMi/Pictures/stop.png</normaloff>C:/Users/XIAOMi/Pictures/stop.png</iconset>
+              <normaloff>icons/stop.png</normaloff>icons/stop.png</iconset>
             </property>
             <property name="iconSize">
              <size>
@@ -355,7 +355,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1240</width>
+     <width>1251</width>
      <height>26</height>
     </rect>
    </property>

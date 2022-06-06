@@ -1,21 +1,19 @@
 import os
+import glob
 
 import numpy as np
 import pandas as pd
-from ansys.mapdl import reader
+import ansys.mapdl.reader as pyansys
 from matplotlib import pyplot
 from pandas import DataFrame
 from sklearn.cluster import KMeans
 
-from src.researches.clusterization.ClusterDataEntry import ClusterDataEntry
-from src.researches.util.files_utils import get_list_of_rst_researches
+from src.clusterization.ClusterDataEntry import ClusterDataEntry
 
 
 class ResearchesClusterization:
-
-    def __init__(self, researches_folder: str) -> None:
-        super().__init__()
-        self.__researches_folder = researches_folder
+    def __init__(self, researches_folder):
+        self.researches_folder = researches_folder
         self.RESEARCH_ID_COLUMN = "research_id"
         self.AVG_STRESS_COLUMN = "avg_stress"
         self.MAX_STRESS_COLUMN = "max_stress"
@@ -43,7 +41,7 @@ class ResearchesClusterization:
         pyplot.show()
 
     def collect_data(self) -> DataFrame:
-        stress_files = get_list_of_rst_researches(root_folder=self.__researches_folder)
+        stress_files = self.get_list_of_rst_researches()
         research_data = pd.DataFrame(columns=[self.RESEARCH_ID_COLUMN, self.AVG_STRESS_COLUMN, self.MAX_STRESS_COLUMN])
 
         for stress_file in stress_files:
@@ -66,13 +64,19 @@ class ResearchesClusterization:
             avg_stress=avg_stress,
             max_stress=max_stress)
 
+    def get_list_of_rst_researches(self):
+        rst_pattern = self.researches_folder + os.sep + "*.rst"
+        all_researches = glob.glob(rst_pattern)
+        if "file" in all_researches[-1]:  # Deleting Ansys standard file
+            del all_researches[-1]
+        return all_researches
 
     def __get_research_id_from_path(self, rst_file: str) -> str:
         nodes = rst_file.split(os.sep)
-        return nodes[len(nodes) - 2]
+        return nodes[-1]
 
     def __calculate_avg_and_max_stress(self, stress_file: str) -> [float, float]:
-        _, stress = reader.read_binary(stress_file).principal_nodal_stress(0)
+        _, stress = pyansys.read_binary(stress_file).principal_nodal_stress(0)
         stress = stress[:, 4]
         stress = stress[~np.isnan(stress)]
 
